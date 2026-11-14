@@ -192,7 +192,7 @@ Lagu ditambahake ing antrian!
 Gagal ngantri lagu!
 Info & Setelan Sistem
 Normalisasi Volume
-Lagu sing beda kerep duwe volume sing beda. Ngaktifake normalisasi volume bakal mbukak <i>ffmpeg</i> kanggo ngetung volume global lagu lan nyetel volume pamuter kanthi otomatis supaya saben lagu muni padha banter.
+Lagu sing beda kerep duwe volume sing beda. Ngaktifake normalisasi volume bakal mbukak ffmpeg kanggo ngetung volume global lagu lan nyetel volume pamuter kanthi otomatis supaya saben lagu muni padha banter.
 Path download perpustakaan lagu
 Jumlah total lagu
 Tampilake / Singidaken Subtitle

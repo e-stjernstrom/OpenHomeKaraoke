@@ -192,7 +192,7 @@ Yükleme başarısız!
 Şarkı sıraya alınamadı!
 Sistem Bilgisi ve Ayarları
 Hacim Normalleştirmesi
-Farklı şarkıların genellikle farklı ses seviyeleri vardır. Ses düzeyi normalleştirmesinin etkinleştirilmesi, ilk olarak bir şarkının genel ses düzeyini hesaplamak için <i>ffmpeg</i>'i çalıştıracak ve her şarkının eşit derecede yüksek ses çıkarması için oynatıcı ses düzeyini otomatik olarak ayarlayacaktır.
+Farklı şarkıların genellikle farklı ses seviyeleri vardır. Ses düzeyi normalleştirmesinin etkinleştirilmesi, ilk olarak bir şarkının genel ses düzeyini hesaplamak için ffmpeg'i çalıştıracak ve her şarkının eşit derecede yüksek ses çıkarması için oynatıcı ses düzeyini otomatik olarak ayarlayacaktır.
 Şarkı kitaplığı indirme yolu
 Toplam şarkı sayısı
 Altyazıyı Göster/Gizle

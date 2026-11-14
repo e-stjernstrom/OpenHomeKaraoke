@@ -192,7 +192,7 @@ Lagu ditambahkan ke antrian!
 Gagal mengantri lagu!
 Info & Pengaturan Sistem
 Normalisasi Volume
-Lagu yang berbeda seringkali memiliki volume yang berbeda. Mengaktifkan normalisasi volume akan menjalankan <i>ffmpeg</i> terlebih dahulu untuk menghitung volume global sebuah lagu dan secara otomatis menyesuaikan volume pemutar sehingga setiap lagu terdengar sama kerasnya.
+Lagu yang berbeda seringkali memiliki volume yang berbeda. Mengaktifkan normalisasi volume akan menjalankan ffmpeg terlebih dahulu untuk menghitung volume global sebuah lagu dan secara otomatis menyesuaikan volume pemutar sehingga setiap lagu terdengar sama kerasnya.
 Jalur pengunduhan perpustakaan lagu
 Jumlah total lagu
 Tampilkan/Sembunyikan Subjudul

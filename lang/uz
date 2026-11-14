@@ -192,7 +192,7 @@ Qo'shiq navbatga qo'shildi!
 Qo‘shiqni navbatga qo‘yib bo‘lmadi!
 Tizim ma'lumotlari va sozlamalari
 Ovozni normallashtirish
-Turli xil qo'shiqlar ko'pincha har xil hajmga ega. Ovoz balandligini normallashtirishni yoqish birinchi navbatda qo'shiqning global hajmini hisoblash uchun <i>ffmpeg</i>ni ishga tushiradi va har bir qo'shiq bir xil darajada baland ovozda eshitilishi uchun pleer ovozini avtomatik ravishda sozlaydi.
+Turli xil qo'shiqlar ko'pincha har xil hajmga ega. Ovoz balandligini normallashtirishni yoqish birinchi navbatda qo'shiqning global hajmini hisoblash uchun ffmpegni ishga tushiradi va har bir qo'shiq bir xil darajada baland ovozda eshitilishi uchun pleer ovozini avtomatik ravishda sozlaydi.
 Qo'shiq kutubxona yuklab olish yo'li
 Qo'shiqlarning umumiy soni
 Subtitrni ko'rsatish/yashirish

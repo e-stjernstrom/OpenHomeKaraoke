@@ -192,7 +192,7 @@ Lied zur Warteschlange hinzugefügt!
 Das Lied konnte nicht in die Warteschlange gestellt werden!
 Systeminformationen und Einstellungen
 Volumennormalisierung
-Unterschiedliche Lieder haben oft unterschiedliche Lautstärken. Wenn Sie die Lautstärkenormalisierung aktivieren, wird zunächst <i>ffmpeg</i> ausgeführt, um die Gesamtlautstärke eines Songs zu berechnen und die Player-Lautstärke automatisch so anzupassen, dass jeder Song gleich laut klingt.
+Unterschiedliche Lieder haben oft unterschiedliche Lautstärken. Wenn Sie die Lautstärkenormalisierung aktivieren, wird zunächst ffmpeg ausgeführt, um die Gesamtlautstärke eines Songs zu berechnen und die Player-Lautstärke automatisch so anzupassen, dass jeder Song gleich laut klingt.
 Downloadpfad für die Songbibliothek
 Gesamtzahl der Lieder
 Untertitel ein-/ausblenden

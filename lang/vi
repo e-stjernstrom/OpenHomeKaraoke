@@ -192,7 +192,7 @@ Bài hát được thêm vào hàng đợi!
 Không thể xếp hàng bài hát!
 Thông tin & cài đặt hệ thống
 Chuẩn hóa âm lượng
-Các bài hát khác nhau thường có âm lượng khác nhau. Việc bật chuẩn hóa âm lượng trước tiên sẽ chạy <i>ffmpeg</i> để tính toán âm lượng chung của một bài hát và tự động điều chỉnh âm lượng của trình phát để mọi bài hát đều có âm lượng lớn như nhau.
+Các bài hát khác nhau thường có âm lượng khác nhau. Việc bật chuẩn hóa âm lượng trước tiên sẽ chạy ffmpeg để tính toán âm lượng chung của một bài hát và tự động điều chỉnh âm lượng của trình phát để mọi bài hát đều có âm lượng lớn như nhau.
 Đường dẫn tải thư viện bài hát
 Tổng số bài hát
 Hiển thị/Ẩn phụ đề

@@ -192,7 +192,7 @@ Canzone aggiunta alla coda!
 Impossibile mettere in coda la canzone!
 Informazioni e impostazioni di sistema
 Normalizzazione del volume
-Canzoni diverse hanno spesso volumi diversi. Abilitando la normalizzazione del volume verrà prima eseguito <i>ffmpeg</i> per calcolare il volume globale di un brano e regolare automaticamente il volume del player in modo che ogni brano suoni allo stesso volume.
+Canzoni diverse hanno spesso volumi diversi. Abilitando la normalizzazione del volume verrà prima eseguito ffmpeg per calcolare il volume globale di un brano e regolare automaticamente il volume del player in modo che ogni brano suoni allo stesso volume.
 Percorso di download della libreria di brani
 Numero totale di brani
 Mostra/Nascondi sottotitoli

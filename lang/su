@@ -192,7 +192,7 @@ Lagu ditambahkeun kana antrian!
 Gagal ngantri lagu!
 Inpormasi Sistem & Setélan
 Normalisasi Volume
-Lagu anu béda sering gaduh volume anu béda. Aktipkeun normalisasi volume bakal mimiti ngajalankeun <i>ffmpeg</i> pikeun ngitung volume global hiji lagu sareng otomatis nyaluyukeun volume pamuter supados unggal lagu disada sami nyaring.
+Lagu anu béda sering gaduh volume anu béda. Aktipkeun normalisasi volume bakal mimiti ngajalankeun ffmpeg pikeun ngitung volume global hiji lagu sareng otomatis nyaluyukeun volume pamuter supados unggal lagu disada sami nyaring.
 Jalur download perpustakaan lagu
 Jumlah total lagu
 Témbongkeun / Sumputkeun Subjudul

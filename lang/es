@@ -192,7 +192,7 @@ Esto cambia el idioma del sistema backend de OpenHomeKaraoke que se muestra en l
 ¡No se pudo poner la canción en cola!
 Información y configuración del sistema
 Normalización de volumen
-Las diferentes canciones suelen tener un volumen diferente. Al habilitar la normalización del volumen, primero se ejecutará <i>ffmpeg</i> para calcular el volumen global de una canción y ajustar automáticamente el volumen del reproductor para que todas las canciones suenen igual de altas.
+Las diferentes canciones suelen tener un volumen diferente. Al habilitar la normalización del volumen, primero se ejecutará ffmpeg para calcular el volumen global de una canción y ajustar automáticamente el volumen del reproductor para que todas las canciones suenen igual de altas.
 Ruta de descarga de la biblioteca de canciones
 Número total de canciones
 Mostrar/Ocultar subtítulo

@@ -192,7 +192,7 @@ Pjesma dodana u red čekanja!
 Neuspješno stavljanje pjesme u red čekanja!
 Podaci o sustavu i postavke
 Normalizacija volumena
-Različite pjesme često imaju različitu glasnoću. Omogućavanje normalizacije glasnoće prvo će pokrenuti <i>ffmpeg</i> za izračunavanje globalne glasnoće pjesme i automatsko podešavanje glasnoće playera tako da svaka pjesma zvuči jednako glasno.
+Različite pjesme često imaju različitu glasnoću. Omogućavanje normalizacije glasnoće prvo će pokrenuti ffmpeg za izračunavanje globalne glasnoće pjesme i automatsko podešavanje glasnoće playera tako da svaka pjesma zvuči jednako glasno.
 Put preuzimanja zbirke pjesama
 Ukupan broj pjesama
 Prikaži/sakrij podnaslov

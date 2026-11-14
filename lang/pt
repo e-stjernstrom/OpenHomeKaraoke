@@ -192,7 +192,7 @@ Música adicionada à fila!
 Falha ao colocar a música na fila!
 Informações e configurações do sistema
 Normalização de Volume
-Músicas diferentes geralmente têm volumes diferentes. Ativar a normalização do volume executará primeiro o <i>ffmpeg</i> para calcular o volume global de uma música e ajustar automaticamente o volume do player para que todas as músicas soem igualmente altas.
+Músicas diferentes geralmente têm volumes diferentes. Ativar a normalização do volume executará primeiro o ffmpeg para calcular o volume global de uma música e ajustar automaticamente o volume do player para que todas as músicas soem igualmente altas.
 Caminho de download da biblioteca de músicas
 Número total de músicas
 Mostrar/ocultar legenda

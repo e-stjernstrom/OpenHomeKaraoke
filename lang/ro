@@ -192,7 +192,7 @@ Cântec adăugat la coadă!
 Nu s-a putut pune în coadă melodia!
 Informații de sistem și setări
 Normalizarea volumului
-Cântece diferite au adesea volum diferit. Activarea normalizării volumului va rula mai întâi <i>ffmpeg</i> pentru a calcula volumul global al unei melodii și va ajusta automat volumul playerului, astfel încât fiecare melodie să sune la fel de tare.
+Cântece diferite au adesea volum diferit. Activarea normalizării volumului va rula mai întâi ffmpeg pentru a calcula volumul global al unei melodii și va ajusta automat volumul playerului, astfel încât fiecare melodie să sune la fel de tare.
 Calea de descărcare a bibliotecii de melodii
 Numărul total de melodii
 Afișați/Ascundeți subtitrarea

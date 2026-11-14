@@ -192,7 +192,7 @@ Sang lagt til i køen!
 Kunne ikke sette sangen i kø!
 Systeminfo og innstillinger
 Volumnormalisering
-Ulike sanger har ofte ulikt volum. Aktivering av volumnormalisering vil først kjøre <i>ffmpeg</i> for å beregne det globale volumet til en sang og automatisk justere spillervolumet slik at hver sang høres like høyt ut.
+Ulike sanger har ofte ulikt volum. Aktivering av volumnormalisering vil først kjøre ffmpeg for å beregne det globale volumet til en sang og automatisk justere spillervolumet slik at hver sang høres like høyt ut.
 Last ned bane for sangbibliotek
 Totalt antall sanger
 Vis/skjul undertekst
