@@ -225,6 +225,8 @@ python app.py -w
 
 The karaoke screen shows a QR code and an address such as `http://192.168.1.23:5000`.
 
+- If port 5000 is already used by another program (on a Mac usually AirPlay Receiver), the program moves to the next free ports by itself, and the QR code shows the new address.
+
 1. Connect your phone to the **same Wi-Fi** as the computer.
 2. Scan the QR code, or type the address into the phone's browser.
 3. The first time, enter your name (it is shown next to the songs you add).

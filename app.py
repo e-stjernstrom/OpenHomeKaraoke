@@ -983,6 +983,29 @@ if __name__ == "__main__":
 	elif args.save_delays == 'no':
 		args.save_delays = None
 
+	# The web page needs --port (http) and, without --ssl, --port+1 (https). If one is taken, the
+	# QR code would point to another program: on macOS port 5000 belongs to AirPlay Receiver,
+	# which answers with an empty page. Move to the next free pair instead.
+	def port_free(port):
+		import socket
+		with socket.socket() as s:
+			s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # like Flask, so TIME_WAIT is fine
+			try:
+				s.bind(('0.0.0.0', port))
+				return True
+			except OSError:
+				return False
+	web_ports = lambda p: [p] if args.ssl else [p, p + 1]
+	if not all(port_free(q) for q in web_ports(args.port)):
+		for p in range(args.port + 2, args.port + 200, 2):
+			if args.use_vlc and int(args.vlc_port) in web_ports(p):
+				continue
+			if all(port_free(q) for q in web_ports(p)):
+				print(f"Port {args.port} is used by another program (on macOS usually AirPlay Receiver). "
+				      f"Using port {p} instead; the QR code shows the new address.")
+				args.port = p
+				break
+
 	# Configure karaoke process
 	os.K = K = Karaoke(args)
 
