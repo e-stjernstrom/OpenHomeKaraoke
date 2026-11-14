@@ -18,16 +18,30 @@ from flask import request
 from lib import omxclient, vlcclient
 from lib.get_platform import *
 from lib.NLP import *
-from app import getString
+from app import getString, getString1
 
 if get_platform() != "windows":
 	from signal import SIGALRM, alarm, signal, SIGTERM
 	signal(SIGTERM, lambda signum, stack_frame: os.K.stop())
 
 STD_VOL = 65536/8/np.sqrt(2)
-ip2websock, ip2pane = {}, {}
+ip2websock, ip2pane, ip2lang = {}, {}, {}
+STR_CANNOT_PLAY = 238  # 'Cannot play "%s" (the file may be damaged). Skipped.'
 
 ws_send = lambda ip, msg: ip2websock[ip].send(msg) if ip in ip2websock else None
+
+def fill_s(template, value):
+	# Some machine-translated lang lines have a broken placeholder ("% S", "%с"), so don't use % formatting
+	return template.replace('%s', value) if '%s' in template else f'{template} {value}'
+
+def broadcast_notification(string_id, value, category = "is-danger", timeout_ms = 8000):
+	# Show a notification on every connected web client, each in its own language
+	for ip, ws in list(ip2websock.items()):
+		msg = fill_s(getString1(ip2lang.get(ip, os.lang), string_id), value)
+		try:
+			ws.send(f'showNotification({json.dumps(msg)}, {json.dumps(category)}, {int(timeout_ms)})')
+		except Exception as e:
+			logging.debug(f"Could not notify {ip}: {e}")
 
 def flash(message: str, category: str = "message", client_ip = ''):
 	ws_send(client_ip or request.remote_addr, f'showNotification("{message}", "{category}")')
@@ -77,6 +91,8 @@ class Karaoke:
 	logical_volume = None   # for normalized volume
 	status_dirty = True
 	event_dirty = threading.Event()
+	skip_notice = None      # (title, time) of the last song VLC could not play, shown on the splash screen
+	skip_notice_secs = 10
 
 	def __init__(self, args):
 
@@ -326,6 +342,16 @@ class Karaoke:
 		self.logo1 = pygame.transform.scale(self.logo, (W, H))
 		self.screen.blit(self.logo1, (center[0]-W/2, center[1]-H/2-text[1].height/2))
 		self.screen.blit(text[0], (center[0]-text[1].width/2, center[1]+H/2))
+
+		# Banner for a song that VLC could not play (shown for a few seconds). It sits over the lower
+		# part of the logo, just above the title, so it never covers the texts around the edges.
+		if self.skip_notice and time.time() - self.skip_notice[1] < self.skip_notice_secs:
+			notice = self.render_font([40, 34, 28], fill_s(getString(STR_CANNOT_PLAY), self.skip_notice[0]), (255, 255, 255))
+			pad = int(self.normalize(12))
+			box = pygame.Rect(0, 0, notice[1].width + pad*2, notice[1].height + pad*2)
+			box.midbottom = (center[0], int(center[1] + H/2 - self.normalize(20)))
+			pygame.draw.rect(self.screen, (170, 30, 30), box, border_radius = pad)
+			self.screen.blit(notice[0], (box.x + pad, box.y + pad))
 
 		if not self.hide_ip:
 			qr_size = 150
@@ -651,6 +677,9 @@ class Karaoke:
 			if xml is None:
 				# VLC could not start this file (unreadable, or never reported its streams): skip it
 				logging.error("Skipping song that VLC could not play: " + file_path)
+				title = self.filename_from_path(file_path)
+				self.skip_notice = (title, time.time())
+				broadcast_notification(STR_CANNOT_PLAY, title)
 				self.reset_now_playing()
 				self.switchingSong = False
 				self.status_dirty = True
