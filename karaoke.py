@@ -118,6 +118,7 @@ class Karaoke:
 	logical_volume = None   # for normalized volume
 	status_dirty = True
 	event_dirty = threading.Event()
+	video_view = None       # macOS: NSView of the pygame window that VLC draws into
 	skip_notice = None      # (title, time) of the last song VLC could not play, shown on the splash screen
 	skip_notice_secs = 10
 
@@ -185,8 +186,17 @@ class Karaoke:
 
 		self.generate_qr_code()
 		if self.use_vlc:
-			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path,
-			                                     qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
+			vlc_args = dict(port = self.vlc_port, path = self.vlc_path,
+			                qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
+			if self.platform == 'osx' and not self.hide_splash_screen:
+				# macOS: a VLC process cannot draw into the pygame window, so run libvlc in-process
+				try:
+					from lib.vlc_embedded import EmbeddedVLCClient
+					self.vlcclient = EmbeddedVLCClient(get_view = lambda: self.video_view, **vlc_args)
+				except Exception as e:
+					logging.warning(f"Cannot run VLC inside the window ({e}); VLC opens its own window")
+			if self.vlcclient is None:
+				self.vlcclient = vlcclient.VLCClient(**vlc_args)
 			self.vlcclient.wait_hook = self.pump_events_if_main_thread
 		else:
 			self.omxclient = omxclient.OMXClient(path = self.omxplayer_path, adev = self.omxplayer_adev,
@@ -337,6 +347,10 @@ class Karaoke:
 				self.screen = pygame.display.set_mode([self.WIDTH, self.HEIGHT], self.get_default_display_mode())
 			else:
 				self.screen = pygame.display.set_mode([self.WIDTH*3//4, self.HEIGHT*3//4], pygame.RESIZABLE)
+			if self.platform == 'osx':
+				# the view the in-process VLC draws into (see lib/vlc_embedded.py)
+				from lib.vlc_embedded import nsview_of_pygame_window
+				self.video_view = Try(lambda: nsview_of_pygame_window(pygame.display.get_wm_info()), None)
 			if self.is_file_playing():
 				self.play_transposed(self.now_playing_transpose)
 			else:
