@@ -192,7 +192,7 @@ Canción engadida á cola!
 Produciuse un erro ao poñer a canción na cola.
 Información e configuración do sistema
 Normalización de volume
-As cancións diferentes adoitan ter un volume diferente. Ao activar a normalización do volume, primeiro executarase <i>ffmpeg</i> para calcular o volume global dunha canción e axustar automaticamente o volume do reprodutor para que cada canción soe igual de alto.
+As cancións diferentes adoitan ter un volume diferente. Ao activar a normalización do volume, primeiro executarase ffmpeg para calcular o volume global dunha canción e axustar automaticamente o volume do reprodutor para que cada canción soe igual de alto.
 Ruta de descarga da biblioteca de cancións
 Número total de cancións
 Mostrar/Ocultar subtítulos

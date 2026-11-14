@@ -192,7 +192,7 @@ Kanta gidugang sa pila!
 Napakyas sa pagpila sa kanta!
 Impormasyon sa Sistema ug Mga Setting
 Pag-normalize sa Volume
-Ang lainlaing mga kanta kanunay adunay lainlaing volume. Ang pagpagana sa pag-normalize sa volume modagan una og <i>ffmpeg</i> aron makwenta ang global volume sa usa ka kanta ug awtomatik nga i-adjust ang volume sa player aron ang matag kanta parehas og kusog.
+Ang lainlaing mga kanta kanunay adunay lainlaing volume. Ang pagpagana sa pag-normalize sa volume modagan una og ffmpeg aron makwenta ang global volume sa usa ka kanta ug awtomatik nga i-adjust ang volume sa player aron ang matag kanta parehas og kusog.
 Paagi sa pag-download sa librarya sa kanta
 Total nga gidaghanon sa mga kanta
 Ipakita/Itago ang Subtitle

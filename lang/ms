@@ -192,7 +192,7 @@ Lagu ditambahkan pada baris gilir!
 Gagal untuk beratur lagu!
 Maklumat & Tetapan Sistem
 Normalisasi Kelantangan
-Lagu yang berbeza selalunya mempunyai volum yang berbeza. Mendayakan penormalan volum akan dijalankan dahulu <i>ffmpeg</i> untuk mengira volum global lagu dan melaraskan volum pemain secara automatik supaya setiap lagu berbunyi sama kuat.
+Lagu yang berbeza selalunya mempunyai volum yang berbeza. Mendayakan penormalan volum akan dijalankan dahulu ffmpeg untuk mengira volum global lagu dan melaraskan volum pemain secara automatik supaya setiap lagu berbunyi sama kuat.
 Laluan muat turun perpustakaan lagu
 Jumlah bilangan lagu
 Tunjukkan/Sembunyikan Sarikata

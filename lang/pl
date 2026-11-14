@@ -192,7 +192,7 @@ Piosenka dodana do kolejki!
 Nie udało się ustawić utworu w kolejce!
 Informacje o systemie i ustawienia
 Normalizacja objętości
-Różne utwory często mają różną głośność. Włączenie normalizacji głośności spowoduje najpierw uruchomienie <i>ffmpeg</i> w celu obliczenia globalnej głośności utworu i automatyczne dostosowanie głośności odtwarzacza, tak aby każdy utwór brzmiał równie głośno.
+Różne utwory często mają różną głośność. Włączenie normalizacji głośności spowoduje najpierw uruchomienie ffmpeg w celu obliczenia globalnej głośności utworu i automatyczne dostosowanie głośności odtwarzacza, tak aby każdy utwór brzmiał równie głośno.
 Ścieżka pobierania biblioteki utworów
 Łączna liczba utworów
 Pokaż/ukryj napisy

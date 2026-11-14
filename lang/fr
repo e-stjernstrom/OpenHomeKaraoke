@@ -192,7 +192,7 @@ Chanson ajoutée à la file d'attente !
 Échec de la mise en file d'attente de la chanson !
 Informations et paramètres système
 Normalisation des volumes
-Différentes chansons ont souvent un volume différent. L'activation de la normalisation du volume exécutera d'abord <i>ffmpeg</i> pour calculer le volume global d'une chanson et ajustera automatiquement le volume du lecteur afin que chaque chanson sonne de manière égale.
+Différentes chansons ont souvent un volume différent. L'activation de la normalisation du volume exécutera d'abord ffmpeg pour calculer le volume global d'une chanson et ajustera automatiquement le volume du lecteur afin que chaque chanson sonne de manière égale.
 Chemin de téléchargement de la bibliothèque de chansons
 Nombre total de chansons
 Afficher/Masquer les sous-titres

@@ -192,7 +192,7 @@ Kappale lisätty jonoon!
 Kappaleen asettaminen jonoon epäonnistui!
 Järjestelmätiedot ja asetukset
 Äänenvoimakkuuden normalisointi
-Eri kappaleilla on usein eri äänenvoimakkuus. Äänenvoimakkuuden normalisoinnin ottaminen käyttöön suorittaa ensin <i>ffmpeg</i>-komennon, joka laskee kappaleen yleisen äänenvoimakkuuden ja säätää automaattisesti soittimen äänenvoimakkuutta niin, että jokainen kappale kuulostaa yhtä kovalta.
+Eri kappaleilla on usein eri äänenvoimakkuus. Äänenvoimakkuuden normalisoinnin ottaminen käyttöön suorittaa ensin ffmpeg-komennon, joka laskee kappaleen yleisen äänenvoimakkuuden ja säätää automaattisesti soittimen äänenvoimakkuutta niin, että jokainen kappale kuulostaa yhtä kovalta.
 Kappalekirjaston latauspolku
 Kappaleiden kokonaismäärä
 Näytä/piilota tekstitys

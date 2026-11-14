@@ -192,7 +192,7 @@ Pesem dodana v čakalno vrsto!
 Skladbe ni bilo mogoče postaviti v čakalno vrsto!
 Sistemske informacije in nastavitve
 Normalizacija glasnosti
-Različne pesmi imajo pogosto različno glasnost. Če omogočite normalizacijo glasnosti, se bo najprej zagnal <i>ffmpeg</i>, da izračuna globalno glasnost pesmi in samodejno prilagodi glasnost predvajalnika, tako da vsaka pesem zveni enako glasno.
+Različne pesmi imajo pogosto različno glasnost. Če omogočite normalizacijo glasnosti, se bo najprej zagnal ffmpeg, da izračuna globalno glasnost pesmi in samodejno prilagodi glasnost predvajalnika, tako da vsaka pesem zveni enako glasno.
 Pot prenosa knjižnice pesmi
 Skupno število pesmi
 Prikaži/skrij podnapis

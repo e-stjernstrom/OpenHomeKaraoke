@@ -192,7 +192,7 @@ Kanzunetta miżjuda mal-kju!
 Naqas milli jpoġġi l-kanzunetta fil-kju!
 Informazzjoni tas-Sistema u Settings
 Normalizzazzjoni tal-Volum
-Kanzunetti differenti ħafna drabi jkollhom volum differenti. L-abilitazzjoni tan-normalizzazzjoni tal-volum l-ewwel se taħdem <i>ffmpeg</i> biex tikkalkula l-volum globali ta 'kanzunetta u taġġusta awtomatikament il-volum tal-plejer sabiex kull kanzunetta tinstema' ugwalment qawwi.
+Kanzunetti differenti ħafna drabi jkollhom volum differenti. L-abilitazzjoni tan-normalizzazzjoni tal-volum l-ewwel se taħdem ffmpeg biex tikkalkula l-volum globali ta 'kanzunetta u taġġusta awtomatikament il-volum tal-plejer sabiex kull kanzunetta tinstema' ugwalment qawwi.
 Mogħdija tat-tniżżil tal-librerija tal-kanzunetti
 Numru totali ta' kanzunetti
 Uri/Aħbi s-sottotitolu

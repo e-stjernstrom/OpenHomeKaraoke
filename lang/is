@@ -192,7 +192,7 @@ Lagi bætt í röðina!
 Mistókst að setja lagið í biðröð!
 Kerfisupplýsingar og stillingar
 Volume Normalization
-Mismunandi lög hafa oft mismunandi hljóðstyrk. Ef stöðlun hljóðstyrks er virkt mun fyrst keyra <i>ffmpeg</i> til að reikna út heildarstyrk lags og stilla hljóðstyrk spilarans sjálfkrafa þannig að hvert lag hljómi jafn hátt.
+Mismunandi lög hafa oft mismunandi hljóðstyrk. Ef stöðlun hljóðstyrks er virkt mun fyrst keyra ffmpeg til að reikna út heildarstyrk lags og stilla hljóðstyrk spilarans sjálfkrafa þannig að hvert lag hljómi jafn hátt.
 Slóð lagasafns til að sækja
 Heildarfjöldi laga
 Sýna/fela texta

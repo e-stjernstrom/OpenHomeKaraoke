@@ -192,7 +192,7 @@ Idinagdag ang kanta sa pila!
 Nabigong i-queue ang kanta!
 Impormasyon at Mga Setting ng System
 Volume Normalization
-Ang iba't ibang kanta ay kadalasang may iba't ibang volume. Ang pagpapagana ng volume normalization ay tatakbo muna ng <i>ffmpeg</i> upang makalkula ang pandaigdigang volume ng isang kanta at awtomatikong isaayos ang volume ng player upang ang bawat kanta ay tumunog nang pantay na malakas.
+Ang iba't ibang kanta ay kadalasang may iba't ibang volume. Ang pagpapagana ng volume normalization ay tatakbo muna ng ffmpeg upang makalkula ang pandaigdigang volume ng isang kanta at awtomatikong isaayos ang volume ng player upang ang bawat kanta ay tumunog nang pantay na malakas.
 Landas sa pag-download ng library ng kanta
 Kabuuang bilang ng mga kanta
 Ipakita/Itago ang Subtitle

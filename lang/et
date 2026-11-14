@@ -192,7 +192,7 @@ Laul lisati järjekorda!
 Laulu järjekorda seadmine ebaõnnestus!
 Süsteemi teave ja sätted
 Helitugevuse normaliseerimine
-Erinevatel lauludel on sageli erinev helitugevus. Helitugevuse normaliseerimise lubamisel käivitatakse esmalt <i>ffmpeg</i>, et arvutada loo globaalne helitugevus ja reguleerida mängija helitugevust automaatselt nii, et iga lugu kõlaks võrdselt.
+Erinevatel lauludel on sageli erinev helitugevus. Helitugevuse normaliseerimise lubamisel käivitatakse esmalt ffmpeg, et arvutada loo globaalne helitugevus ja reguleerida mängija helitugevust automaatselt nii, et iga lugu kõlaks võrdselt.
 Laulukogu allalaadimise tee
 Laulude koguarv
 Kuva/peida subtiitrid
