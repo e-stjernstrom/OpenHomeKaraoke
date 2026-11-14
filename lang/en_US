@@ -237,3 +237,12 @@ You need to change the security setting in Firefox browser to allow microphone a
 Please open 'about:config' in a new tab and set 'media.getusermedia.insecure.enabled' and 'media.devices.insecure.enabled'.
 Cannot play "%s" (the file may be damaged). Skipped.
 Background vocal splitting (when off, existing instrumental/vocal tracks can still be played)
+HP5 – removes the lead vocal, keeps backing vocals (recommended)
+HP2 – removes all vocals
+HP3 – removes all vocals (alternative)
+Baseline – lighter and faster, for slow computers
+not downloaded yet, downloads 63 MB automatically
+downloading ...
+HP models separate better, but are several times slower without a graphics card. On a slow computer, choose Baseline.
+Each model keeps its own results. Until the chosen model reaches a song, an existing result is played.
+L-R/L+R: only for MTV-style karaoke videos (L-R = instrumental, L+R = vocals).

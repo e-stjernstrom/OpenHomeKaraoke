@@ -16,6 +16,7 @@ from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient
 from lib.vocal_dirs import is_split_disabled
+from lib import vocal_models as vm
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString, getString1
@@ -78,7 +79,7 @@ class Karaoke:
 	show_subtitle = True
 	last_vocal_info = 0
 	last_vocal_time = 0
-	use_DNN_vocal = True
+	vocal_model = vm.DEFAULT_MODEL  # chosen on the Info page, see lib/vocal_models.py
 	vocal_process = None
 	vocal_device = None
 	vocal_mode = 'mixed'
@@ -101,6 +102,7 @@ class Karaoke:
 		self.__dict__.update(args.__dict__)
 		self.omxplayer_adev = 'both'
 		self.download_path = args.dl_path
+		self.vocal_model = vm.get_selected(self.download_path)
 		self.volume_offset = self.volume = args.volume
 		self.logo_path = self.default_logo_path if args.logo_path == None else args.logo_path
 
@@ -199,8 +201,8 @@ class Karaoke:
 				try:
 					fn = self.cloud_tasks.pop(0)
 					bn, dn = os.path.basename(fn), os.path.dirname(fn)
-					if os.path.isfile(f'{self.download_path}nonvocal/{bn}.m4a') and os.path.isfile(f'{self.download_path}vocal/{bn}.m4a'):
-						continue
+					if all(vm.find_result(self.download_path, d, 'baseline', bn)[0] for d in vm.SUBDIRS):
+						continue  # a neural-network result already exists
 					os.system(f'ffmpeg -y -i "{fn}" -vn -c copy {self.tmp_dir}/input.m4a')
 					with open(f'{self.tmp_dir}/input.m4a', 'rb') as f:
 						r = requests.post(self.cloud+'/split_vocal', files={'file': f})
@@ -572,11 +574,7 @@ class Karaoke:
 		basename = os.path.basename(song_path)
 		basestem = os.path.splitext(basename)
 		return [self.download_path + basename,
-				self.download_path + basestem[0] + '.cdg',
-				self.download_path + 'nonvocal/' + basename + '.m4a',
-				self.download_path + 'nonvocal/.' + basename + '.m4a',
-				self.download_path + 'vocal/' + basename + '.m4a',
-				self.download_path + 'vocal/.' + basename + '.m4a']
+				self.download_path + basestem[0] + '.cdg'] + vm.all_result_paths(self.download_path, basename)
 
 	def delete_if_exist(self, filename):
 		if os.path.isfile(filename):
@@ -987,9 +985,10 @@ class Karaoke:
 	def try_set_vocal_mode(self, mode, now_playing_filename):
 		if mode not in ['mixed', 'vocal', 'nonvocal']:
 			mode = {1: 'nonvocal', 2: 'mixed', 3: 'vocal'}[self.get_vocal_mode()]
-		play_slave = '' if mode == 'mixed' else self.download_path + mode + '/' + ('' if self.use_DNN_vocal else '.') \
-		                                       + os.path.basename(now_playing_filename) + '.m4a'
-		if os.path.isfile(play_slave):
+		# the selected model's result, or else the best other existing one (see vm.fallback_order)
+		play_slave = '' if mode == 'mixed' else \
+			vm.find_result(self.download_path, mode, self.vocal_model, os.path.basename(now_playing_filename))[0]
+		if play_slave:
 			self.vocal_mode = mode
 		else:
 			play_slave = ''
@@ -998,6 +997,8 @@ class Karaoke:
 
 	def play_vocal(self, mode = None, force = False):
 		# mode=vocal/nonvocal/mixed, or else (use current)
+		if not self.now_playing_filename:
+			return  # nothing is playing (e.g. a phone sent the request between two songs)
 		if self.use_vlc:
 			play_slave = self.try_set_vocal_mode(mode, self.now_playing_filename)
 			if not force and self.now_playing_slave == play_slave:
@@ -1009,6 +1010,16 @@ class Karaoke:
 			self.get_vocal_info(True)
 		else:
 			logging.error("Not using VLC. Can't play vocal/nonvocal.")
+
+	@property
+	def use_DNN_vocal(self):
+		return self.vocal_model != 'LR'
+
+	def set_vocal_model(self, model):
+		self.vocal_model = vm.set_selected(self.download_path, model)
+		if self.now_playing_filename:
+			self.play_vocal()
+		return self.vocal_model
 
 	def get_vocal_mode(self):
 		if '/nonvocal/' in self.now_playing_slave.replace('\\', '/'):
@@ -1025,15 +1036,17 @@ class Karaoke:
 			return 0
 		mask = 0
 		bn = os.path.basename(self.now_playing_filename)
-		if os.path.isfile(f'{self.download_path}nonvocal/{bn}.m4a'):
+		# bits 0/1: a neural-network instrumental/vocal track exists (any model); bits 2/3: L-R/L+R ones
+		dnn = 'baseline' if self.vocal_model == 'LR' else self.vocal_model
+		if vm.find_result(self.download_path, 'nonvocal', dnn, bn)[0]:
 			mask |= 0b00000001
-		if os.path.isfile(f'{self.download_path}vocal/{bn}.m4a'):
+		if vm.find_result(self.download_path, 'vocal', dnn, bn)[0]:
 			mask |= 0b00000010
-		if os.path.isfile(f'{self.download_path}nonvocal/.{bn}.m4a'):
+		if os.path.isfile(vm.result_path(self.download_path, 'nonvocal', 'LR', bn)):
 			mask |= 0b00000100
-		if os.path.isfile(f'{self.download_path}vocal/.{bn}.m4a'):
+		if os.path.isfile(vm.result_path(self.download_path, 'vocal', 'LR', bn)):
 			mask |= 0b00001000
-		if 'vocal/.' in self.now_playing_slave:
+		if vm.result_model(self.now_playing_slave) == 'LR':
 			mask |= 0b10000000
 		if self.use_DNN_vocal:
 			mask |= 0b01000000

@@ -18,6 +18,7 @@ from collections import defaultdict
 from lib.get_platform import *
 from lib.vlcclient import get_default_vlc_path
 from lib.vocal_dirs import ensure_vocal_dirs, is_split_disabled, set_split_enabled
+from lib import vocal_models as vm
 
 try:
 	from urllib.parse import quote, unquote
@@ -290,7 +291,7 @@ def get_vocal_todo_list(vocal_device, last_completed=''):
 		K.rename(last_completed, os.path.splitext(K.rename_history[last_completed])[0])
 		K.rename_history.pop(last_completed)
 	q = ([K.now_playing_filename] if K.now_playing_filename else []) + [i['file'] for i in K.queue]
-	return json.dumps({'download_path': K.download_path, 'queue': q, 'use_DNN': K.use_DNN_vocal})
+	return json.dumps({'download_path': K.download_path, 'queue': q, 'use_DNN': K.use_DNN_vocal, 'model': K.vocal_model})
 
 
 @app.route("/save_delays/<state>")
@@ -301,8 +302,16 @@ def set_save_delays(state):
 
 @app.route("/set_vocal_mode/<mode>")
 def set_vocal_mode(mode):
-	K.use_DNN_vocal = (mode.lower() == 'true')
-	K.play_vocal()
+	# old on/off switch: true = neural network (default model), false = L-R/L+R
+	if is_admin():
+		K.set_vocal_model(vm.DEFAULT_MODEL if mode.lower() == 'true' else 'LR')
+	return ''
+
+
+@app.route("/set_vocal_model/<model>")
+def set_vocal_model(model):
+	if is_admin():
+		K.set_vocal_model(model)
 	return ''
 
 
@@ -777,6 +786,8 @@ def info():
 		youtubedl_version = youtubedl_version,
 		is_pi = is_pi,
 		use_DNN = K.use_DNN_vocal,
+		vocal_model = K.vocal_model,
+		model_status = {m: vm.model_status(m) for m in vm.ALL_MODELS},
 		norm_vol = K.normalize_vol,
 		pikaraoke_version = VERSION,
 		download_path = K.download_path,
@@ -834,6 +845,8 @@ def f_info():
 		youtubedl_version = youtubedl_version,
 		is_pi = is_pi,
 		use_DNN = K.use_DNN_vocal,
+		vocal_model = K.vocal_model,
+		model_status = {m: vm.model_status(m) for m in vm.ALL_MODELS},
 		norm_vol = K.normalize_vol,
 		pikaraoke_version = VERSION,
 		download_path = K.download_path,

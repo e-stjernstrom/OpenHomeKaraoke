@@ -52,8 +52,8 @@
       });
     });
 
-    $("#use-DNN").change(function(){
-      $.get("/set_vocal_mode/" + this.checked, function( data ){
+    $("#vocal-model").change(function(){
+      $.get("/set_vocal_model/" + encodeURIComponent(this.value), function( data ){
         location.reload(true);
       });
     });
@@ -484,15 +484,18 @@ select:-moz-focusring {
 <p class="help-normal">{{getString1(195)}}</p>
 
 <h4>{{getString1(152)}}</h4>
-<div class="is-flex" style="align-items:center">
-  <span style="vertical-align:middle; text-align:center;">{{getString1(153)}}</span>
-  <label style="vertical-align:middle; margin: 5px" class="switch">
-    <input id="use-DNN" type="checkbox" {% if use_DNN %}checked{% endif %}>
-    <span class="slider round"></span>
-  </label>
-  <span style="vertical-align:middle; text-align:center;">{{getString1(154)}}</span>
+<div class="select">
+  <select id="vocal-model">
+    {% for m, sid in [('HP5', 240), ('HP2', 241), ('HP3', 242), ('baseline', 243), ('LR', 153)] %}
+    <option value="{{m}}" {% if m == vocal_model %}selected{% endif %}>{{getString1(sid)}}{% if model_status[m] == 'missing' %} ({{getString1(244)}}){% elif model_status[m] == 'downloading' %} ({{getString1(245)}}){% endif %}</option>
+    {% endfor %}
+  </select>
 </div>
-<p class="help">{{getString1(155)}}</p>
+<ul class="help" style="list-style: disc; margin-left: 1.5em">
+  <li>{{getString1(246)}}</li>
+  <li>{{getString1(247)}}</li>
+  <li>{{getString1(248)}}</li>
+</ul>
 
 <h4>{{getString1(239)}}
   <label style="vertical-align:middle; margin: 5px" class="switch">

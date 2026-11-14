@@ -237,3 +237,12 @@ Youtube-dl (yt-dlp) 版本
 請在新的頁面中開啟'about:config'，並且設定'media.getusermedia.insecure.enabled'和'media.devices.insecure.enabled'。
 無法播放「%s」（檔案可能已損毀），已跳過。
 背景去人聲（關閉後，已經產生的伴奏／人聲音軌仍然可以播放）
+HP5 – 去除主唱，保留和聲（推薦）
+HP2 – 去除所有人聲
+HP3 – 去除所有人聲（備選）
+Baseline – 較輕、較快，適合慢的電腦
+尚未下載，會自動下載 63 MB
+下載中……
+HP 模型分離得比較好，但沒有顯示卡時會慢好幾倍。電腦慢的話選 Baseline。
+每個模型的結果分開保存。所選模型還沒處理到的歌，會先播放已有的結果。
+L-R/L+R：只適用於 MTV 式卡拉 OK 影片（L-R 是伴奏，L+R 是人聲）。

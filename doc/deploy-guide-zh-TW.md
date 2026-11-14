@@ -150,6 +150,14 @@ cd OpenHomeKaraoke
 
 這是原專案的分支版本（fork）。它修好了兩個問題：在 Linux 桌面上卡拉 OK 視窗會顯示「沒有回應」而卡住，以及遇到無法播放的歌曲時會卡死。
 
+**實驗版。** 新功能會先放在一個叫 `experimental` 的分支上試用，目前有：可以選擇去人聲模型（5d），以及在 Apple Silicon Mac 上使用顯示晶片（5e）。要使用實驗版，在上面的 `cd` 之後執行一次：
+
+```bash
+git switch experimental
+```
+
+要回到一般版本：`git switch master`。
+
 ---
 
 ## 第 3 步：建立 venv 並安裝套件
@@ -250,6 +258,12 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 **有 NVIDIA 顯示卡的電腦：** 到 <https://pytorch.org/get-started/locally/> 用選單選好（Pip、Python、你的 CUDA 版本），執行它給你的指令。
 
+**Mac（Apple Silicon M1/M2/M3/M4 和 Intel 都一樣）：** 不要用上面 CPU 那一行，改裝一般版本。在 Apple Silicon 上它還可以用 Mac 的顯示晶片（5e）。
+
+```bash
+pip install torch
+```
+
 然後，所有人都要執行：
 
 ```bash
@@ -303,6 +317,44 @@ python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
 ```
 
 `--gpu -1` 的意思是「用處理器（CPU），不用顯示卡」。如果顯示卡出錯（例如顯示卡太舊，你的 PyTorch 版本不支援），它會自己改用處理器。
+
+### 5d. 選擇模型（只有實驗版）
+
+在 `experimental` 實驗版（第 2 步）裡，**資訊**頁面的**進階控制選項**下面，**人聲分離器模式**變成一個下拉選單。如果你設了管理員密碼，只有管理員看得到。這個設定對整台卡拉 OK 有效，不是只對某一支手機。
+
+| 選項 | 效果 | 在測試筆電上的速度（CPU，4 核心） |
+|---|---|---|
+| **HP5**（預設） | 只去除主唱，保留和聲。通常最適合唱卡拉 OK。 | 每 1 分鐘的歌大約要 2 分半 |
+| **HP2** | 去除所有人聲，連和聲也去掉。 | 跟 HP5 差不多 |
+| **HP3** | 另一個去除所有人聲的版本。如果 HP2 在某首歌留下太多人聲，可以試試看。 | 跟 HP5 差不多 |
+| **Baseline** | 程式原本就有的模型。比較輕，大約快 4 倍，但留下的人聲比較多。電腦比較慢的話選它。 | 每 1 分鐘的歌大約 35 秒 |
+| **L-R/L+R** | 給 MTV 式卡拉 OK 影片用的老方法。不用 AI，馬上完成，但只對這種影片有效。 | 馬上 |
+
+HP5、HP2、HP3 來自 **Ultimate Vocal Remover（UVR5）**（MIT 授權）。每個模型是一個大約 63 MB 的檔案，不包含在程式下載裡。去人聲程式第一次需要某個模型時，**會自己**從 Hugging Face（`huggingface.co/lj1995/VoiceConversionWebUI`）**下載**，並檢查檔案是否完整。下載的時候，選單上會顯示「下載中……」。檔案會放在程式的 `models/vr` 資料夾；如果程式資料夾不能寫入，就放在 `~/.cache/OpenHomeKaraoke/models/vr`。
+
+如果下載失敗（沒有網路、被防火牆擋住），去人聲程式會先用 **Baseline**，一小時後再試著下載。你也可以自己用瀏覽器從 <https://huggingface.co/lj1995/VoiceConversionWebUI/tree/main/uvr5_weights> 下載檔案，放進 `models/vr`（例如 `models/vr/HP5_only_main_vocal.pth`）。
+
+**已經做好的歌會怎樣？** 每個模型的結果分開保存，不會互相覆蓋：
+
+- Baseline：`nonvocal/<歌名>.m4a`（跟以前一樣）
+- HP5、HP2、HP3：`nonvocal/HP5/<歌名>.m4a`，依此類推
+- L-R/L+R：`nonvocal/.<歌名>.m4a`（隱藏檔，跟以前一樣）
+
+`vocal` 資料夾也一樣。換成另一個模型之後，去人聲程式會用新模型把歌曲庫再處理一遍，點播清單裡的歌優先。還沒輪到的歌，手機會先播放已經存在的最好結果（依序是 HP5、HP2、HP3、Baseline）。每個模型大約需要跟歌曲音訊差不多大的硬碟空間（128 kbit/s AAC，每條音軌每分鐘大約 1 MB）。
+
+自己手動執行時，可以用 `--model HP2`（或 `HP5`、`HP3`、`baseline`、`LR`）蓋過資訊頁面上的選擇。
+
+### 5e. 顯示卡：NVIDIA 和 Apple Silicon（只有實驗版）
+
+去人聲程式會照下面的順序，挑它找得到的最快的方式：
+
+1. **NVIDIA** 顯示卡（CUDA），如果你的 PyTorch 支援；
+2. **Apple Silicon Mac**（M1/M2/M3/M4）的顯示晶片（Apple 稱為「MPS」），用第 5a 步的一般版 PyTorch 就可以；
+3. 都沒有的話，就用處理器（CPU）。
+
+記錄檔（5c）的第一行會寫它用的是哪一個，例如 `device mps`。如果顯示晶片記憶體不夠，或有做不到的計算，去人聲程式會自己改用處理器，接著處理同一首歌。少數 Apple 晶片不支援的計算，會自動改在處理器上做。
+
+> **還沒在真正的 Mac 上測試過。** Apple Silicon 這條路只在 Linux 電腦上用模擬的方式測試過（讓程式以為自己有 Apple 晶片）。實際上會不會比 CPU 快、快多少，目前還不知道。如果出問題，可以照常啟動卡拉 OK，但讓去人聲用處理器跑：先 `python app.py -w --no-vocal`，再在第二個終端機執行 `python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1`。
 
 ---
 
@@ -359,6 +411,9 @@ git pull
 
 **手機頁面打得開，但歌下載不了。**
 更新 YouTube 下載工具：`pip install -U yt-dlp`。
+
+**模型選單一直顯示「尚未下載」（實驗版）。**
+去人聲程式開始工作時才會下載模型，所以它必須在執行：確認 PyTorch 已經安裝，而且開關是開的（5c）。如果記錄檔說下載失敗，就自己下載檔案（5d）。
 
 **去人聲一直沒有做完。**
 確認已經裝好 PyTorch（第 5a 步），而且資訊頁面上的**背景去人聲**開關是開著的（第 5c 步）。接著看第 5c 步提到的記錄檔：裡面會寫它正在處理哪首歌，或為什麼沒有在執行（例如「Python package(s) not installed: torch」）。

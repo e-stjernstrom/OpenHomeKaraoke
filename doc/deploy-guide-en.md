@@ -150,6 +150,14 @@ cd OpenHomeKaraoke
 
 This is a fork of the original project. It includes fixes for a freeze where the karaoke window showed "not responding" on Linux desktops, and for songs that fail to play.
 
+**Experimental version.** New features are tried out first on a branch called `experimental`: at the moment, a choice of vocal-removal models (Step 5d) and graphics-card support on Apple Silicon Macs (Step 5e). To use it, run this once after the `cd` above:
+
+```bash
+git switch experimental
+```
+
+To go back to the normal version: `git switch master`.
+
 ---
 
 ## Step 3. Create the venv and install the add-ons
@@ -250,6 +258,12 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 **Computers with an NVIDIA card:** use the selector at <https://pytorch.org/get-started/locally/> (choose Pip, Python and your CUDA version) and run the command it shows.
 
+**Macs (both Apple Silicon M1/M2/M3/M4 and Intel):** use the normal version instead of the CPU line above. On Apple Silicon it can also use the Mac's graphics chip (Step 5e).
+
+```bash
+pip install torch
+```
+
 Then, for everyone:
 
 ```bash
@@ -303,6 +317,44 @@ python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
 ```
 
 `--gpu -1` means "use the processor (CPU), not a graphics card". If a graphics card fails (for example, a card too old for your PyTorch version), it switches to the processor by itself.
+
+### 5d. Choosing the model (experimental version only)
+
+In the `experimental` version (Step 2), the **Information** page has a drop-down list under **Advanced Control Options**, **Vocal splitter mode**. Only the admin sees it if you set an admin password. It applies to the whole karaoke, not to one phone.
+
+| Choice | What it does | Speed on the test laptop (CPU, 4 cores) |
+|---|---|---|
+| **HP5** (default) | Removes only the lead singer and keeps the backing vocals. Usually the nicest for karaoke. | about 2½ minutes of work per minute of song |
+| **HP2** | Removes all vocals, backing vocals included. | about the same as HP5 |
+| **HP3** | Another version that removes all vocals. Try it if HP2 leaves too much voice in a song. | about the same as HP5 |
+| **Baseline** | The model the program always had. Lighter and about 4 times faster, but leaves more of the voice. Choose it on a slow computer. | about 35 seconds per minute of song |
+| **L-R/L+R** | The old trick for MTV-style karaoke videos. No AI, instant, and only works on such videos. | instant |
+
+HP5, HP2 and HP3 come from **Ultimate Vocal Remover (UVR5)** (MIT licence). Each one is a file of about 63 MB that is not included in the download. The first time the vocal remover needs one, **it downloads it by itself** from Hugging Face (`huggingface.co/lj1995/VoiceConversionWebUI`) and checks that the file is complete. While it is downloading, the list shows "downloading ...". The files go to the `models/vr` folder of the program, or to `~/.cache/OpenHomeKaraoke/models/vr` if the program folder is read-only.
+
+If the download fails (no internet, a firewall), the vocal remover uses **Baseline** for now and tries the download again an hour later. You can also download the file yourself with a browser from <https://huggingface.co/lj1995/VoiceConversionWebUI/tree/main/uvr5_weights> and put it in `models/vr` (for example `models/vr/HP5_only_main_vocal.pth`).
+
+**What happens to songs that are already done?** Each model keeps its own results, so nothing is overwritten:
+
+- Baseline: `nonvocal/<song>.m4a` (as before)
+- HP5, HP2, HP3: `nonvocal/HP5/<song>.m4a` and so on
+- L-R/L+R: `nonvocal/.<song>.m4a` (a hidden file, as before)
+
+The same goes for the `vocal` folder. After you switch to another model, the vocal remover goes through your library again with the new model, queued songs first. Until it reaches a song, the phone plays the best result that already exists (HP5, then HP2, HP3, Baseline). Each model needs about as much disk space as the songs' audio again (128 kbit/s AAC, about 1 MB per minute per track).
+
+When running it by hand, `--model HP2` (or `HP5`, `HP3`, `baseline`, `LR`) overrides the choice on the Information page.
+
+### 5e. Graphics cards: NVIDIA and Apple Silicon (experimental version only)
+
+The vocal remover picks the fastest thing it finds, in this order:
+
+1. an **NVIDIA** graphics card (CUDA), if your PyTorch supports it;
+2. the graphics chip of an **Apple Silicon Mac** (M1/M2/M3/M4; Apple calls this "MPS"), with the normal PyTorch from Step 5a;
+3. otherwise the processor (CPU).
+
+The log file (Step 5c) says which one it uses in its first line, for example `device mps`. If the graphics chip runs out of memory or can't do something, the vocal remover switches to the processor by itself and carries on with the same song. A few calculations that Apple's chip doesn't support are done on the processor automatically.
+
+> **Not tested on a real Mac.** The Apple Silicon path was only tested with a simulation on a Linux computer (the program believed it had an Apple chip). Whether it is actually faster than the CPU, and by how much, is not known yet. If it causes problems, start the karaoke as usual and run the vocal remover on the processor: `python app.py -w --no-vocal`, then in a second terminal `python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1`.
 
 ---
 
@@ -359,6 +411,9 @@ The file is damaged or isn't a real video or audio file. Delete it from the phon
 
 **The phone page opens but songs won't download.**
 Update the YouTube downloader: `pip install -U yt-dlp`.
+
+**The model list says "not downloaded yet" and it stays that way (experimental version).**
+The vocal remover downloads the model when it starts working, so it must be running: check that PyTorch is installed and the switch is on (Step 5c). If the log file says the download failed, download the file yourself (Step 5d).
 
 **Vocal removal never finishes a song.**
 Check that PyTorch is installed (Step 5a) and that the **Background vocal splitting** switch on the Info page is on (Step 5c). Then look at the log file named in Step 5c: it shows which song it is working on, or why it is not running (for example "Python package(s) not installed: torch").
