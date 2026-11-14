@@ -87,9 +87,9 @@ def status_thread():
 
 		for ip, ws in ip2websock.items():
 			if ip2pane.get(ip, '') == 'home':
-				ws.send(f"update('{status_full}')")
+				ws.send(f"update({json.dumps(status_full)})")
 			elif ip2pane.get(ip, '') == 'queue':
-				ws.send(f"update('{K.queue_json}')")
+				ws.send(f"update({json.dumps(K.queue_json)})")
 		K.status_dirty = False
 
 # Define global symbols for Jinja templates 
@@ -866,12 +866,12 @@ def _add_spoken(client_ip, user, getString):
 	res = findMedia(K.download_path, asr_postprocess(asr_output['text']), lang=asr_output['language'])
 	ws = ip2websock.get(client_ip, '')
 	if not res:
-		return ws.send(f"showNotification('{getString(226)%asr_output['text']}', 'is-info')")
+		return ws.send(f"showNotification({json.dumps(fill_s(getString(226), asr_output['text']))}, 'is-info')")
 	res_titles = [filename_from_path(s) for s in res]
 	if len(res)==1:
 		add_res = K.enqueue(res[0], user)
-		return ws.send(f'add1song("{res_titles[0]}","{res[0]}")' if add_res else f"showNotification('{getString(116)+res_titles[0]}', 'is-info')")
-	return ws.send(f"addSongs('{json.dumps([res_titles, res])}')")
+		return ws.send(f'add1song({json.dumps(res_titles[0])},{json.dumps(res[0])})' if add_res else f"showNotification({json.dumps(getString(116)+res_titles[0])}, 'is-info')")
+	return ws.send(f"addSongs({json.dumps(json.dumps([res_titles, res]))})")
 
 
 @app.route('/add_spoken/<user>', methods=['POST'])

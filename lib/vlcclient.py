@@ -1,6 +1,6 @@
 import os, sys, re, random, shutil
 import string, logging, time
-import subprocess, zipfile, signal
+import subprocess, zipfile, signal, threading
 
 import requests
 
@@ -152,7 +152,16 @@ class VLCClient:
 				os.killpg(self.process.pid, signal.SIGKILL)
 			self.process = None
 
+	# The main thread (next song) and web threads (key change, vocal/instrumental switch) can call
+	# play_file at the same time. Without this lock both could start a VLC, and the one started
+	# first would be left running in the background, out of control.
+	play_lock = threading.RLock()
+
 	def play_file(self, file_path, volume, params = []):
+		with self.play_lock:
+			return self._play_file(file_path, volume, params)
+
+	def _play_file(self, file_path, volume, params = []):
 		try:
 			file_path = self.process_file(file_path)
 			self.is_transposing = True
@@ -264,8 +273,8 @@ class VLCClient:
 					os.K.now_playing_filename = os.K.download_path + os.K.now_playing_filename
 				os.K.now_playing = os.K.filename_from_path(os.K.now_playing_filename)
 			return request
-		except:
-			logging.error("No active VLC process. Could not run command: " + command)
+		except Exception as e:
+			logging.error(f"No active VLC process. Could not run command '{command}': {type(e).__name__}: {e}")
 			return SimpleNamespace(**{'text': self.last_status_text, 'status_code': 500})
 
 	def pause(self, save_status=True):

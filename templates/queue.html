@@ -46,13 +46,13 @@
     if (queue.length > 0) {
       queue.forEach((e, index) => {
         html += `
-          <tr value=${e.title}>
+          <tr value="${esc(e.title)}">
             <td width="20px" style="padding: 5px 0px">${index + 1}</td>
             {% if admin %}
               <td width="20px" style="padding: 5px 0px" class="drag-starter">
                 <a
                   class="up-button"
-                  href="/queue/edit?action=up&song=${encodeURIComponent(e.file)}"
+                  href="/queue/edit?action=up&song=${uriq(e.file)}"
                   title="{{getString1(105)}}"
                   ><i class="icon icon-up-circled ${index == 0 && "is-hidden"}"></i>
                 </a>
@@ -60,20 +60,20 @@
               <td width="20px" style="padding: 5px 0px" class="drag-starter">
                 <a
                   class="down-button"
-                  href="/queue/edit?action=down&song=${encodeURIComponent(e.file)}"
+                  href="/queue/edit?action=down&song=${uriq(e.file)}"
                   title="{{getString1(106)}}"
                   ><i class="icon icon-down-circled ${index + 1 == queue.length && "is-hidden"}"></i>
                 </a>
               </td>
             {% endif %}
-            <td style="padding-left: 10px" ><b class="is-hidden-tablet has-text-success">${e.user}: </b> ${e.title}</td>
-            <td style="padding-left: 5px"  class="queue-user is-hidden-mobile has-text-success"><b>${e.user}</b></td>
+            <td style="padding-left: 10px" ><b class="is-hidden-tablet has-text-success">${esc(e.user)}: </b> ${esc(e.title)}</td>
+            <td style="padding-left: 5px"  class="queue-user is-hidden-mobile has-text-success"><b>${esc(e.user)}</b></td>
             {% if admin %}
               <td width="20px">
                 <a
                   class="delete-button confirm-delete has-text-danger"
-                  title="{{getString1(113)}} ${e.title}"
-                  href="/queue/edit?action=delete&song=${encodeURIComponent(e.file)}"
+                  title="{{getString1(113)}} ${esc(e.title)}"
+                  href="/queue/edit?action=delete&song=${uriq(e.file)}"
                   ><i class="icon icon-trash-empty"></i>
                 </a>
               </td>

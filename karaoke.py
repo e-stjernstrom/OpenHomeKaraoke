@@ -44,7 +44,8 @@ def broadcast_notification(string_id, value, category = "is-danger", timeout_ms 
 			logging.debug(f"Could not notify {ip}: {e}")
 
 def flash(message: str, category: str = "message", client_ip = ''):
-	ws_send(client_ip or request.remote_addr, f'showNotification("{message}", "{category}")')
+	# message often contains a song title; json.dumps makes it a safe JavaScript string literal
+	ws_send(client_ip or request.remote_addr, f'showNotification({json.dumps(str(message))}, {json.dumps(category)})')
 
 def cleanse_modules(name):
 	try:
@@ -781,7 +782,7 @@ class Karaoke:
 			match = [(ii,each) for ii,each in enumerate(self.queue) if song_file in each["file"]]
 			index, song = match[0] if match else (-1, None)
 			if song == None:
-				logging.error("Song not found in queue: " + song["file"])
+				logging.error("Song not found in queue: " + song_file)
 				return False
 			if action == "up":
 				if index < 1:
