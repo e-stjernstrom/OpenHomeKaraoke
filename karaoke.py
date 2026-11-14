@@ -143,6 +143,7 @@ class Karaoke:
 		if self.use_vlc:
 			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path,
 			                                     qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
+			self.vlcclient.wait_hook = self.pump_events_if_main_thread
 		else:
 			self.omxclient = omxclient.OMXClient(path = self.omxplayer_path, adev = self.omxplayer_adev,
 			                                     dual_screen = self.dual_screen, volume_offset = self.volume_offset)
@@ -647,6 +648,14 @@ class Karaoke:
 				xml = self.vlcclient.play_file(file_path, self.volume, extra_params + extra_params1)
 			else:
 				xml = self.vlcclient.play_file_transpose(file_path, self.now_playing_transpose, self.volume, extra_params + extra_params1)
+			if xml is None:
+				# VLC could not start this file (unreadable, or never reported its streams): skip it
+				logging.error("Skipping song that VLC could not play: " + file_path)
+				self.reset_now_playing()
+				self.switchingSong = False
+				self.status_dirty = True
+				self.render_splash_screen()
+				return False
 			self.has_subtitle = "<info name='Type'>Subtitle</info>" in xml
 			self.has_video = "<info name='Type'>Video</info>" in xml
 			self.volume = round(float(self.vlcclient.get_val_xml(xml, 'volume')))
@@ -660,6 +669,7 @@ class Karaoke:
 		self.switchingSong = False
 		self.status_dirty = True
 		self.render_splash_screen()  # remove old previous track
+		return True
 
 	def play_transposed(self, semitones):
 		if self.use_vlc:
@@ -1046,6 +1056,13 @@ class Karaoke:
 			pygame.display.update()
 		pygame.time.wait(100)
 
+	def pump_events_if_main_thread(self):
+		# While the main thread is blocked waiting for VLC to start, let SDL process window
+		# events so it keeps answering the window manager's ping (no "not responding" dialog).
+		# Events stay queued and are handled by handle_run_loop afterwards.
+		if self.screen is not None and threading.current_thread() is threading.main_thread():
+			pygame.event.pump()
+
 	# Use this to reset the screen in case it loses focus
 	# This seems to occur in windows after playing a video
 	def pygame_reset_screen(self):
@@ -1185,7 +1202,9 @@ class Karaoke:
 						while time.time()-tm < self.splash_delay:
 							self.handle_run_loop()
 						head = self.queue.pop(0)
-						self.play_file(head['file'])
+						if not self.play_file(head['file']):
+							self.update_queue()  # failed song was skipped, move on to the next one
+							continue
 						if self.cloud:
 							self.cloud_tasks += [head['file']]
 							self.cloud_trigger.set()

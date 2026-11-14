@@ -27,6 +27,18 @@ def get_default_vlc_path(platform):
 
 class VLCClient:
 	vol_increment = 10
+	startup_timeout = 15  # seconds to wait for VLC's HTTP interface to report the media
+	# Called while play_file waits for VLC. Karaoke sets it to pump pygame events when on the
+	# main thread, so the window keeps answering the window manager's ping and stays movable.
+	wait_hook = None
+
+	def _wait(self, seconds):
+		time.sleep(seconds)
+		if self.wait_hook is not None:
+			try:
+				self.wait_hook()
+			except Exception as e:
+				logging.debug(f"wait_hook failed: {e}")
 
 	def __init__(self, port = 5002, path = None, qrcode = None, url = None):
 
@@ -154,13 +166,15 @@ class VLCClient:
 			logging.info("VLC Command: %s" % command)
 			self.process = subprocess.Popen(command, stdin = subprocess.PIPE)
 
-			# wait for the process to start
-			while self.process.poll() is not None:
-				pass
-
-			# wait for VLC HTTP is ready
+			# wait for VLC HTTP is ready. Give up if VLC exits (e.g. unreadable file) or
+			# takes too long, so the caller can skip the song instead of hanging forever.
+			deadline = time.time() + self.startup_timeout
 			while True:
-				time.sleep(0.1)
+				self._wait(0.1)
+				if self.process.poll() is not None:
+					raise Exception(f"VLC exited during startup (exit code {self.process.returncode})")
+				if time.time() > deadline:
+					raise Exception(f"VLC did not report the media within {self.startup_timeout}s")
 				req = self.command("", False)
 				xml = req.text
 				if "<info name='Type'>Video</info>" not in xml and "<info name='Type'>Audio</info>" not in xml:
@@ -169,24 +183,34 @@ class VLCClient:
 					break
 
 			# workaround --volume-save not working in Windows
+			# VLC built with newer Lua reports volume as "256.0", so parse it as float.
+			# Never loop forever: this runs on the main (pygame) thread when switching songs,
+			# and a stuck loop freezes the window ("not responding" on GNOME/Wayland).
 			okay = False
+			deadline = time.time() + 5
 			while volume and not okay:
+				if self.process.poll() is not None or time.time() > deadline:
+					logging.warning(f"Could not confirm VLC volume {volume}, continuing")
+					break
 				try:
 					volume = round(volume)
 					xml = self.command(f"volume&val={volume}", False).text
-					if int(self.get_val_xml(xml, 'volume')) == volume:
-						okay = True
+					okay = round(float(self.get_val_xml(xml, 'volume'))) == volume
 					if not os.K.is_paused and self.get_val_xml(xml, 'state') != 'playing':
 						okay = False
-				except:
-					time.sleep(0.1)
+				except (TypeError, ValueError):
+					okay = False
+				if not okay:
+					self._wait(0.1)
 
 			self.is_transposing = False
 			return xml
 
 		except Exception as e:
 			logging.error("Playing file failed: " + str(e))
+			self.kill()
 			self.is_transposing = False
+			return None
 
 	def play_file_transpose(self, file_path, semitones, volume, extra_params = []):
 		# --speex-resampler-quality=<integer [0 .. 10]>
