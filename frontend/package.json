@@ -1,0 +1,34 @@
+{
+  "name": "openhomekaraoke-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "OpenHomeKaraoke web interface (React + MUI). The built files in ../static/app are committed, so running OpenHomeKaraoke does not need Node.js.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
+    "@emotion/cache": "11.14.0",
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@fontsource/roboto": "5.3.0",
+    "@mui/icons-material": "9.5.0",
+    "@mui/material": "9.5.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "stylis": "4.4.0",
+    "stylis-plugin-rtl": "2.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.0"
+  }
+}

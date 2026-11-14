@@ -196,7 +196,7 @@ python -m pip install --upgrade pip
 ```
 
 ```bash
-pip install flask==2.3.1 flask-sock flask-paginate==2021.10.29 pygame==2.5.2 numpy==1.26.4 pydub psutil qrcode pillow pykakasi pinyin unidecode arabic-reshaper python-bidi yt-dlp requests lingua-language-detector
+pip install flask==2.3.1 flask-sock pygame==2.5.2 numpy==1.26.4 pydub psutil qrcode pillow pykakasi pinyin unidecode arabic-reshaper python-bidi yt-dlp requests lingua-language-detector
 ```
 
 This took about a minute on the test machine.
@@ -293,7 +293,7 @@ Note: it works through **every song already in the folder**. With a big library 
 
 ### 5c. Turning it off and on
 
-On the phone, open the **Information** page (the gear icon). Under **Advanced Control Options** there is a switch, **Background vocal splitting**:
+On the phone, open **Settings** (the gear icon at the top). The **Vocal removal** card has a switch, **Vocal Splitter** (in the `master` version: the **Information** page, **Advanced Control Options**, **Background vocal splitting**):
 
 - **Off**: the vocal remover stops and leaves your songs alone. Instrumental and vocal tracks that are already finished **can still be played**.
 - **On**: it starts again where it left off.
@@ -308,7 +308,7 @@ python app.py -w --no-vocal
 
 **Songs it cannot process** (a damaged download, or a file that isn't really audio or video) are skipped and written down in a hidden file called `.vocal_failed.json` in the song folder. They are not tried again unless the file changes, for example when you download the song again.
 
-**What is it doing right now?** Its messages go to a log file: `/dev/shm/vocal_splitter.log` on Linux, or `vocal_splitter.log` in your temporary folder on Windows and macOS. The Info page also shows whether the vocal remover is running.
+**What is it doing right now?** Its messages go to a log file: `/dev/shm/vocal_splitter.log` on Linux, or `vocal_splitter.log` in your temporary folder on Windows and macOS. The **Vocal removal** card in Settings also shows whether the vocal remover is running, with a **Restart** button if it stopped.
 
 You can still run it by hand in a second terminal (with the venv active), for example to watch it work. It won't run twice on the same folder.
 
@@ -320,7 +320,7 @@ python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
 
 ### 5d. Choosing the model (experimental version only)
 
-In the `experimental` version (Step 2), the **Information** page has a drop-down list under **Advanced Control Options**, **Vocal splitter mode**. Only the admin sees it if you set an admin password. It applies to the whole karaoke, not to one phone.
+In the `experimental` version (Step 2), the **Vocal removal** card in **Settings** has a **Model** list. Only the admin sees it if you set an admin password. It applies to the whole karaoke, not to one phone.
 
 | Choice | What it does | Speed on the test laptop (CPU, 4 cores) |
 |---|---|---|
@@ -342,7 +342,7 @@ If the download fails (no internet, a firewall), the vocal remover uses **Baseli
 
 The same goes for the `vocal` folder. After you switch to another model, the vocal remover goes through your library again with the new model, queued songs first. Until it reaches a song, the phone plays the best result that already exists (HP5, then HP2, HP3, Baseline). Each model needs about as much disk space as the songs' audio again (128 kbit/s AAC, about 1 MB per minute per track).
 
-When running it by hand, `--model HP2` (or `HP5`, `HP3`, `baseline`, `LR`) overrides the choice on the Information page.
+When running it by hand, `--model HP2` (or `HP5`, `HP3`, `baseline`, `LR`) overrides the choice in Settings.
 
 ### 5e. Graphics cards: NVIDIA and Apple Silicon (experimental version only)
 
@@ -407,7 +407,7 @@ Install VLC (Step 1). If VLC is in an unusual place, tell the program where: `py
 This happened in the original project and is fixed in this fork. Run `git pull` to make sure you have the latest version.
 
 **A song is skipped with a red "Cannot play" message.**
-The file is damaged or isn't a real video or audio file. Delete it from the phone page and download it again.
+The file is damaged or isn't a real video or audio file. Delete it in **Library** (the ⋮ button next to the song, admin only) and download it again.
 
 **The phone page opens but songs won't download.**
 Update the YouTube downloader: `pip install -U yt-dlp`.
@@ -416,4 +416,4 @@ Update the YouTube downloader: `pip install -U yt-dlp`.
 The vocal remover downloads the model when it starts working, so it must be running: check that PyTorch is installed and the switch is on (Step 5c). If the log file says the download failed, download the file yourself (Step 5d).
 
 **Vocal removal never finishes a song.**
-Check that PyTorch is installed (Step 5a) and that the **Background vocal splitting** switch on the Info page is on (Step 5c). Then look at the log file named in Step 5c: it shows which song it is working on, or why it is not running (for example "Python package(s) not installed: torch").
+Check that PyTorch is installed (Step 5a) and that the **Vocal Splitter** switch in Settings is on (Step 5c). Then look at the log file named in Step 5c: it shows which song it is working on, or why it is not running (for example "Python package(s) not installed: torch").

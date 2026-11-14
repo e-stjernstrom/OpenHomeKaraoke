@@ -196,7 +196,7 @@ python -m pip install --upgrade pip
 ```
 
 ```bash
-pip install flask==2.3.1 flask-sock flask-paginate==2021.10.29 pygame==2.5.2 numpy==1.26.4 pydub psutil qrcode pillow pykakasi pinyin unidecode arabic-reshaper python-bidi yt-dlp requests lingua-language-detector
+pip install flask==2.3.1 flask-sock pygame==2.5.2 numpy==1.26.4 pydub psutil qrcode pillow pykakasi pinyin unidecode arabic-reshaper python-bidi yt-dlp requests lingua-language-detector
 ```
 
 在測試的電腦上大約花了一分鐘。
@@ -293,7 +293,7 @@ python app.py -w
 
 ### 5c. 關閉和開啟
 
-在手機上打開**資訊**頁面（齒輪圖示），在**進階控制選項**裡有一個開關：**背景去人聲**。
+在手機上打開**設定**（上方的齒輪圖示），**去人聲**卡片裡有一個開關：**人聲分離器**（`master` 版本則是**資訊**頁面 → **進階控制選項** → **背景去人聲**）。
 
 - **關閉**：去人聲程式會停下來，不再處理你的歌。已經做好的伴奏和人聲音軌**還是可以播放**。
 - **開啟**：從上次停下的地方繼續。
@@ -308,7 +308,7 @@ python app.py -w --no-vocal
 
 **處理不了的歌**（下載壞掉的檔案，或其實不是影音的檔案）會被跳過，並記在歌曲資料夾裡一個名叫 `.vocal_failed.json` 的隱藏檔中。除非檔案有變（例如重新下載那首歌），否則不會再試。
 
-**想知道它現在在做什麼？** 它的訊息會寫進記錄檔：Linux 上是 `/dev/shm/vocal_splitter.log`，Windows 和 macOS 上是暫存資料夾裡的 `vocal_splitter.log`。資訊頁面也會顯示去人聲程式有沒有在執行。
+**想知道它現在在做什麼？** 它的訊息會寫進記錄檔：Linux 上是 `/dev/shm/vocal_splitter.log`，Windows 和 macOS 上是暫存資料夾裡的 `vocal_splitter.log`。設定裡的**去人聲**卡片也會顯示去人聲程式有沒有在執行；如果它停了，會有**重新啟動**按鈕。
 
 你也還是可以在另一個終端機（啟用 venv 之後）手動執行它，例如想看它工作的過程。同一個資料夾不會同時跑兩個。
 
@@ -320,7 +320,7 @@ python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
 
 ### 5d. 選擇模型（只有實驗版）
 
-在 `experimental` 實驗版（第 2 步）裡，**資訊**頁面的**進階控制選項**下面，**人聲分離器模式**變成一個下拉選單。如果你設了管理員密碼，只有管理員看得到。這個設定對整台卡拉 OK 有效，不是只對某一支手機。
+在 `experimental` 實驗版（第 2 步）裡，**設定**的**去人聲**卡片有一個**模型**清單。如果你設了管理員密碼，只有管理員看得到。這個設定對整台卡拉 OK 有效，不是只對某一支手機。
 
 | 選項 | 效果 | 在測試筆電上的速度（CPU，4 核心） |
 |---|---|---|
@@ -342,7 +342,7 @@ HP5、HP2、HP3 來自 **Ultimate Vocal Remover（UVR5）**（MIT 授權）。�
 
 `vocal` 資料夾也一樣。換成另一個模型之後，去人聲程式會用新模型把歌曲庫再處理一遍，點播清單裡的歌優先。還沒輪到的歌，手機會先播放已經存在的最好結果（依序是 HP5、HP2、HP3、Baseline）。每個模型大約需要跟歌曲音訊差不多大的硬碟空間（128 kbit/s AAC，每條音軌每分鐘大約 1 MB）。
 
-自己手動執行時，可以用 `--model HP2`（或 `HP5`、`HP3`、`baseline`、`LR`）蓋過資訊頁面上的選擇。
+自己手動執行時，可以用 `--model HP2`（或 `HP5`、`HP3`、`baseline`、`LR`）蓋過設定裡的選擇。
 
 ### 5e. 顯示卡：NVIDIA 和 Apple Silicon（只有實驗版）
 
@@ -407,7 +407,7 @@ git pull
 原專案有這個問題，這個 fork 已經修好了。執行 `git pull` 確認你用的是最新版。
 
 **有首歌被跳過，畫面出現紅色的「無法播放」訊息。**
-那個檔案損壞了，或根本不是影音檔。從手機頁面把它刪掉，再重新下載一次。
+那個檔案損壞了，或根本不是影音檔。在**曲庫**裡把它刪掉（歌名旁邊的 ⋮ 按鈕，限管理員），再重新下載一次。
 
 **手機頁面打得開，但歌下載不了。**
 更新 YouTube 下載工具：`pip install -U yt-dlp`。
@@ -416,4 +416,4 @@ git pull
 去人聲程式開始工作時才會下載模型，所以它必須在執行：確認 PyTorch 已經安裝，而且開關是開的（5c）。如果記錄檔說下載失敗，就自己下載檔案（5d）。
 
 **去人聲一直沒有做完。**
-確認已經裝好 PyTorch（第 5a 步），而且資訊頁面上的**背景去人聲**開關是開著的（第 5c 步）。接著看第 5c 步提到的記錄檔：裡面會寫它正在處理哪首歌，或為什麼沒有在執行（例如「Python package(s) not installed: torch」）。
+確認已經裝好 PyTorch（第 5a 步），而且設定裡的**人聲分離器**開關是開著的（第 5c 步）。接著看第 5c 步提到的記錄檔：裡面會寫它正在處理哪首歌，或為什麼沒有在執行（例如「Python package(s) not installed: torch」）。

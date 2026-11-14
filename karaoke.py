@@ -17,6 +17,7 @@ from flask import request
 from lib import omxclient, vlcclient
 from lib.vocal_dirs import is_split_disabled
 from lib import vocal_models as vm
+from lib import split_status
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString, getString1
@@ -26,10 +27,17 @@ if get_platform() != "windows":
 	signal(SIGTERM, lambda signum, stack_frame: os.K.stop())
 
 STD_VOL = 65536/8/np.sqrt(2)
-ip2websock, ip2pane, ip2lang = {}, {}, {}
+ip2websock, ip2lang = {}, {}
 STR_CANNOT_PLAY = 238  # 'Cannot play "%s" (the file may be damaged). Skipped.'
 
-ws_send = lambda ip, msg: ip2websock[ip].send(msg) if ip in ip2websock else None
+def ws_send(ip, event):
+	"""Send one event to the web page of this client. Events are JSON objects with a "type" key
+	(see frontend/src/api.ts); the page never executes anything it receives."""
+	if ip in ip2websock:
+		try:
+			ip2websock[ip].send(json.dumps(event))
+		except Exception as e:
+			logging.debug(f"Could not send to {ip}: {e}")
 
 def fill_s(template, value):
 	# Some machine-translated lang lines have a broken placeholder ("% S", "%с"), so don't use % formatting
@@ -37,16 +45,12 @@ def fill_s(template, value):
 
 def broadcast_notification(string_id, value, category = "is-danger", timeout_ms = 8000):
 	# Show a notification on every connected web client, each in its own language
-	for ip, ws in list(ip2websock.items()):
+	for ip in list(ip2websock.keys()):
 		msg = fill_s(getString1(ip2lang.get(ip, os.lang), string_id), value)
-		try:
-			ws.send(f'showNotification({json.dumps(msg)}, {json.dumps(category)}, {int(timeout_ms)})')
-		except Exception as e:
-			logging.debug(f"Could not notify {ip}: {e}")
+		ws_send(ip, {'type': 'notify', 'message': msg, 'category': category, 'timeout': int(timeout_ms)})
 
 def flash(message: str, category: str = "message", client_ip = ''):
-	# message often contains a song title; json.dumps makes it a safe JavaScript string literal
-	ws_send(client_ip or request.remote_addr, f'showNotification({json.dumps(str(message))}, {json.dumps(category)})')
+	ws_send(client_ip or request.remote_addr, {'type': 'notify', 'message': str(message), 'category': category})
 
 def unwrap_urllib3_percent_re():
 	"""yt-dlp wraps urllib3's _PERCENT_RE in a Urllib3PercentREOverride object when it is imported.
@@ -109,7 +113,7 @@ class Karaoke:
 	qr_code_path = None
 	base_path = os.path.dirname(__file__)
 	volume_offset = 0
-	default_logo_path = os.path.join(base_path, "logo.jpg")
+	default_logo_path = os.path.join(base_path, "logo.png")
 	logical_volume = None   # for normalized volume
 	status_dirty = True
 	event_dirty = threading.Event()
@@ -296,7 +300,7 @@ class Karaoke:
 		if not self.hide_splash_screen:
 			logging.debug("Initializing pygame")
 			pygame.init()
-			pygame.display.set_caption("pikaraoke")
+			pygame.display.set_caption("OpenHomeKaraoke")
 			pygame.mouse.set_visible(0)
 			self.fonts = {}
 			self.WIDTH = pygame.display.Info().current_w
@@ -404,8 +408,8 @@ class Karaoke:
 		blitY = 10
 		if not self.has_video:
 			logging.debug("Rendering current song to splash screen")
-			render_next_song = self.render_font([60, 50, 40], getString(58) + (self.now_playing or ''), (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + (self.now_playing_user or ''), (0, 240, 0))
+			render_next_song = self.render_font([60, 50, 40], getString(58) + (self.now_playing or ''), (246, 208, 98))
+			render_next_user = self.render_font([50, 40, 30], getString(57) + (self.now_playing_user or ''), (152, 225, 210))
 			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(10)))
 			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(80)))
 			blitY += 140
@@ -414,11 +418,11 @@ class Karaoke:
 			logging.debug("Rendering next song to splash screen")
 			next_song = self.queue[0]["title"]
 			next_user = self.queue[0]["user"]
-			render_next_song = self.render_font([60, 50, 40], getString(56) + next_song, (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + next_user, (0, 240, 0))
+			render_next_song = self.render_font([60, 50, 40], getString(56) + next_song, (246, 208, 98))
+			render_next_user = self.render_font([50, 40, 30], getString(57) + next_user, (152, 225, 210))
 			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(blitY)))
 			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(blitY+70)))
-		elif not self.firstSongStarted:
+		elif not self.firstSongStarted and logging.getLogger().isEnabledFor(logging.DEBUG):
 			text1 = self.render_font(sysfont_size, getString(196) + ': ' + self.download_path, (255, 255, 0))
 			self.screen.blit(text1[0], self.normalize((20, 20)))
 			text2 = self.render_font(sysfont_size, getString(197) + ': %d'%len(self.available_songs), (255, 255, 0))
@@ -570,7 +574,7 @@ class Karaoke:
 			logging.error("Error downloading song: " + song_url)
 			self.downloading_songs[song_url] = -1
 			flash(getString2(190), client_ip = client_ip)
-		return ws_send(client_ip, 'download_ended()')
+		ws_send(client_ip, {'type': 'download', 'url': song_url, 'state': self.downloading_songs.get(song_url)})
 
 	def get_available_songs(self):
 		logging.info("Fetching available songs in: " + self.download_path)
@@ -776,6 +780,15 @@ class Karaoke:
 		self.queue_json = json.dumps(self.queue)
 		self.status_dirty = True
 
+	def queue_insert(self, index, song_path, user):
+		"""Put a song back at a position, e.g. to undo removing it from the queue."""
+		if self.is_song_in_queue(song_path) or not os.path.isfile(song_path):
+			return False
+		index = max(0, min(int(index), len(self.queue)))
+		self.queue.insert(index, {"user": user, "file": song_path, "title": self.filename_from_path(song_path)})
+		self.update_queue()
+		return True
+
 	def queue_clear(self):
 		logging.info("Clearing queue!")
 		self.queue = []
@@ -797,7 +810,9 @@ class Karaoke:
 				logging.error("Invalid move song request: " + str(kwargs))
 				return False
 		else:
-			match = [(ii,each) for ii,each in enumerate(self.queue) if song_file in each["file"]]
+			# exact path first: one song's path can be part of another's
+			match = [(ii,each) for ii,each in enumerate(self.queue) if song_file == each["file"]] or \
+			        [(ii,each) for ii,each in enumerate(self.queue) if song_file in each["file"]]
 			index, song = match[0] if match else (-1, None)
 			if song == None:
 				logging.error("Song not found in queue: " + song_file)
@@ -818,6 +833,10 @@ class Karaoke:
 					logging.info("Bumping song down in queue: " + song["file"])
 					del self.queue[index]
 					self.queue.insert(index + 1, song)
+			elif action == "top":
+				logging.info("Moving song to the top of the queue: " + song["file"])
+				del self.queue[index]
+				self.queue.insert(0, song)
 			elif action == "delete":
 				logging.info("Deleting song from queue: " + song["file"])
 				del self.queue[index]
@@ -1190,10 +1209,38 @@ class Karaoke:
 			return 'ffmpeg not found'
 		return ''
 
+	def splitter_state(self):
+		"""'running', 'stopped', 'off' or 'unavailable' (see lib/split_status.py). Cached for a few
+		seconds: looking for a hand-started splitter walks the process list."""
+		now = time.time()
+		cache = getattr(self, '_splitter_state_cache', None)
+		if cache and now - cache[0] < 3:
+			return cache[1]
+		if self.no_vocal or self.vocal_splitter_missing():
+			state = 'unavailable'
+		elif is_split_disabled(self.download_path):
+			state = 'off'
+		else:
+			state = 'running' if self.vocal_alive() else 'stopped'
+		self._splitter_state_cache = (now, state)
+		return state
+
+	def split_states(self, files):
+		"""{path: state dict} for these songs, see lib/split_status.song_states()."""
+		try:
+			order = ([self.now_playing_filename] if self.now_playing_filename else []) + [q['file'] for q in self.queue]
+			states = split_status.song_states(self.download_path, order + [f for f in files if f not in order],
+			                                  self.vocal_model, self.splitter_state())
+			return {f: states[f] for f in files}
+		except Exception as e:
+			logging.debug(f'split_states: {e}')
+			return {}
+
 	def vocal_restart(self):
 		# The splitter runs as a separate Python process, so PyTorch is never loaded into this
 		# (multi-threaded, UI) process, and a crash in the splitter cannot take the karaoke down.
 		self.vocal_stop()
+		self._splitter_state_cache = None
 		if self.no_vocal:
 			logging.info('Vocal splitter not started (--no-vocal)')
 			return False
@@ -1221,6 +1268,7 @@ class Karaoke:
 			return False
 
 	def vocal_stop(self):
+		self._splitter_state_cache = None
 		p, self.vocal_process = self.vocal_process, None
 		if p is not None and p.poll() is None:
 			p.terminate()

@@ -20,7 +20,6 @@ unidecode
 requests
 arabic-reshaper
 python-bidi
-flask-paginate==2021.10.29
 flask==2.3.1
 numpy==1.26.4
 torch>=1.5.1

@@ -29,11 +29,12 @@ import torch
 from lib.separation import BaselineBackend, VRBackend
 from lib.vocal_dirs import ensure_vocal_dirs, is_split_disabled
 from lib import vocal_models as vm
+from lib import split_status
 from constants import media_types
 
 # ffmpeg cannot decode .zip (mp3+cdg bundles), so those are not split
 SPLITTABLE_TYPES = [t for t in media_types if t != '.zip']
-FAILED_FILE = '.vocal_failed.json'
+FAILED_FILE = split_status.FAILED_FILE
 LOCK_FILE = '.vocal_splitter.lock'
 
 
@@ -98,7 +99,7 @@ def read_stereo(f, start, stop):
 	return np.ascontiguousarray(x[:2])
 
 
-def split_vocal_by_stereo(in_wav, outputs, args, check=lambda: None):
+def split_vocal_by_stereo(in_wav, outputs, args, check=lambda fraction=None: None):
 	"""Traditional karaoke trick for MTV audio: L-R is the instruments, L+R the vocals (mono results).
 	outputs: {'nonvocal': path, 'vocal': path}, either may be missing."""
 	with sf.SoundFile(in_wav) as f:
@@ -108,7 +109,7 @@ def split_vocal_by_stereo(in_wav, outputs, args, check=lambda: None):
 		try:
 			block = 30 * f.samplerate
 			for start in range(0, f.frames, block):
-				check()
+				check(start / f.frames)
 				x = read_stereo(f, start, min(f.frames, start + block))
 				if 'nonvocal' in writers:
 					writers['nonvocal'].write(x[0] - x[1])
@@ -122,7 +123,7 @@ def split_vocal_by_stereo(in_wav, outputs, args, check=lambda: None):
 			raise
 
 
-def split_vocal_by_dnn(in_wav, outputs, backend, segment=60, check=lambda: None):
+def split_vocal_by_dnn(in_wav, outputs, backend, segment=60, check=lambda fraction=None: None):
 	"""Separate a song with a neural-network backend (lib/separation.py), segment by segment, so
 	memory use does not grow with song length.
 
@@ -158,7 +159,7 @@ def split_vocal_by_dnn(in_wav, outputs, backend, segment=60, check=lambda: None)
 		tails = {}
 		try:
 			for k, ((s, e), (a, b)) in enumerate(zip(bounds, windows)):
-				check()
+				check(k / len(bounds))
 				inst, voc = backend.separate(read_stereo(f, a, b), scale)
 				keep = slice(s - a, min(e + xfade, n) - a)
 				for key, wave in (('nonvocal', inst), ('vocal', voc)):
@@ -187,13 +188,10 @@ def split_vocal_by_dnn(in_wav, outputs, backend, segment=60, check=lambda: None)
 song_path = ''
 last_completed = ''
 selected_model = vm.DEFAULT_MODEL  # chosen on the Info page
-# Old failed-list keys stay valid: the baseline model used to be called 'dnn', L-R/L+R 'stereo'
-FAILED_PREFIX = {'baseline': 'dnn', 'LR': 'stereo'}
 DOWNLOAD_RETRY = 3600  # seconds to wait before trying a failed weights download again
 
 
-def method_key(model, bn):
-	return FAILED_PREFIX.get(model, model) + ':' + bn
+method_key = split_status.method_key
 
 
 def file_signature(bn):
@@ -418,17 +416,26 @@ def process_file(bn, model, args, models, in_wav, check):
 	method = 'stereo L-R/L+R' if backend is None else f'{model} model on {args.device.type.upper()}'
 	print(f'Start processing {bn} ({method}):', flush=True)
 	t0 = time.time()
+	split_status.write_progress(song_path, bn, model, 0)
+
+	def check_and_report(fraction=None):
+		# tells the web page how far this song is (lib/split_status.py)
+		if fraction is not None:
+			split_status.write_progress(song_path, bn, model, fraction)
+		check()
+
 	try:
 		ffm_video2wav(os.path.join(song_path, bn), in_wav, args.sr if backend is None else backend.sr)
 		duration = sf.info(in_wav).duration
 		if backend is None:
-			split_vocal_by_stereo(in_wav, partial, args, check)
+			split_vocal_by_stereo(in_wav, partial, args, check_and_report)
 		else:
-			split_vocal_by_dnn(in_wav, partial, backend, args.segment, check)
+			split_vocal_by_dnn(in_wav, partial, backend, args.segment, check_and_report)
 		for d in dirs:
 			os.makedirs(os.path.dirname(final[d]), exist_ok=True)
 			os.replace(partial[d], final[d])
 	finally:
+		split_status.clear_progress(song_path)
 		for p in list(partial.values()) + [in_wav]:
 			if os.path.exists(p):
 				os.remove(p)

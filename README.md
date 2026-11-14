@@ -182,31 +182,33 @@ Make sure you are connected to the same network/wifi. You can then enter the sho
 
 ## Web UI
 
+One page for phones and computers (React + Material UI), in dark or light, with the bottom bar on phones and tabs on wide screens.
+
 ### Home
 
-- View Now Playing and Next tracks
-- Access controls to repeat, pause, skip and control volume 
-- Transpose slider to change playback pitch
+- Now singing and up next, with play/pause, restart, skip, position and volume
+- Music / Mixed / Voice switch, with one line saying whether the instrumental is ready, being made (with progress) or waiting
+- Key (−/+ semitones) and speed; audio and subtitle delay under "Fine-tune"
 
 ### Queue
 
-- Edit the queue/playlist order (up and down arrow icons)
-- Delete from queue ( x icon )
-- Add random songs to the queue
-- Clear the queue
+- Drag the handle to reorder, or use ⋮ (move to top, up, down, remove with undo); admin only when an admin password is set
+- Add 3 random songs, clear the queue
 
-### Songs
+### Search
 
-- Add songs to the queue by searching current library on local storage (likely empty at first), search is executed autocomplete-style
-- Add new songs from the internet by using the second search box
-- Click browse to view the full library. From here you can edit files in the library (rename/delete).
+- Your library first, as you type; then search YouTube and download (optionally added to the queue)
+- Paste a YouTube link to download it directly; voice search when a speech server is set up (`--cloud`, HTTPS)
 
-### Info
+### Library
 
-- Shows the IP and QR code to share with others
-- Shows CPU / Memory / Disk Use stats
-- Allows updating the song list and youtube-dl version
-- Allows user to quit to console, shut down, or reboot system. Always shut down from here before you pull the plug on OpenHomeKaraoke!
+- All songs, filter and sort by name or newest; rename and delete (admin)
+
+### Settings (gear icon)
+
+- QR code and address to share, admin login
+- Vocal removal on/off and model, volume normalization, TV screen language, rescan the song folder
+- System info, update yt-dlp, quit / reboot / shut down. Always shut down from here before you pull the plug!
 
 ## Troubleshooting
 
@@ -287,3 +289,15 @@ Or an even easier approach, if you install this: https://github.com/jasbur/Raspi
 Pip install py-googletrans: `pip install googletrans==3.1.0a0`
 
 You must manually edit `lang/en_US` and `lang/zh_CN`, and then run `./translate-all.sh -c` to re-generate Google translations for the rest. If you just want to add a new language from Google translate, omit the `-c` option.
+
+### How to change the web page?
+The page lives in `frontend/` and is built into `static/app/`, which is committed, so users don't need Node.js. To change it, install Node.js 20.19 or newer, then:
+
+```
+cd frontend
+npm install
+npm run dev     # live preview on http://localhost:5173, talking to OpenHomeKaraoke on port 5000 (set OHK_URL for another address)
+npm run build   # type-check and write static/app/; commit the result
+```
+
+New text goes to the end of `lang/en_US` (and `lang/zh_CN`, `lang/zh_TW`), with its line number in `frontend/src/strings.ts`. Other languages fall back to English line by line.

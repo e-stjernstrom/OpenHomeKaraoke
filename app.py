@@ -10,7 +10,6 @@ from flask import *
 from flask.logging import logging
 from pydub import AudioSegment as AudSeg
 from flask_sock import Sock
-from flask_paginate import Pagination, get_page_parameter
 
 from karaoke import *
 from constants import VERSION
@@ -34,9 +33,20 @@ os.texts = defaultdict(lambda: "")
 getString = lambda ii: os.texts[ii]
 getString1 = lambda lang, ii: os.langs[lang].get(ii, os.langs['en_US'][ii])
 getString2 = lambda ii: getString1(request.client_lang, ii)
+S_ADMIN_ONLY = 249  # 'Only the administrator can do this.'
 
 
-# Websocket handler
+# ---------------------------------------------------------------------------- web page events
+#
+# The web page (frontend/, built into static/app/) is one page that talks to this server through
+# the JSON routes below and a WebSocket. The server pushes events as JSON objects with a "type":
+#   status    {data: <same as /nowplaying>}         playing song, player state, split status
+#   seek      {time: seconds}                       playing position, about once a second
+#   queue     {data: <same as /get_queue>}          the queue changed
+#   notify    {message, category, timeout?}         a message for this user
+#   download  {url, state}                          a download started from this page has ended
+# The page never executes what it receives (the old page did, see git history).
+
 @sock.route('/ws_init')
 def ws_init(sock):
 	key = sock.sock.getpeername()[0]
@@ -48,10 +58,13 @@ def ws_init(sock):
 			wscmd(key, cmd)
 		except:
 			traceback.print_exc()
-	ip2websock.pop(key)
+	ip2websock.pop(key, None)
 	ip2lang.pop(key, None)
 
 def wscmd(client_ip, cmd):
+	# kept for clients of the old page that are still open
+	if not isinstance(cmd, str):
+		return
 	if cmd.startswith('pop_from_queue '):
 		name = cmd.split(' ', 1)[1]
 		K.queue_edit(name, 'delete')
@@ -60,52 +73,50 @@ def wscmd(client_ip, cmd):
 		for fn in lst[1:]:
 			K.enqueue(fn, lst[0])
 
+def broadcast(event):
+	for ip in list(ip2websock.keys()):
+		ws_send(ip, event)
+
 def status_thread():
-	cached_status = ''
+	cached_status, cached_queue = '', ''
 	while True:
 		K.event_dirty.wait(1)
 
 		status = nowplaying(False)
 		if not status: continue
 
-		status_full = json.dumps(status)
+		status_full = dict(status)
 		status.pop('seektrack_value', None)
 		status_str = json.dumps(status)
 		if status_str != cached_status:
 			K.status_dirty = True
 			cached_status = status_str
 
+		queue = queue_payload()
+		queue_str = json.dumps(queue)
+		if queue_str != cached_queue:
+			cached_queue = queue_str
+			broadcast({'type': 'queue', 'data': queue})
+
 		if not K.status_dirty:
 			if not K.is_file_playing():
 				continue
 			tm = K.get_state().get('time', None)
-			if tm is None:
-				continue
-			for ip, ws in ip2websock.items():
-				if ip2pane.get(ip, '') == 'home':
-					ws.send(f"seektrack.value={tm};$('#seektrack-val').text(getHHMMSS({tm}));")
+			if tm is not None:
+				broadcast({'type': 'seek', 'time': tm})
 			continue
 
-		for ip, ws in ip2websock.items():
-			if ip2pane.get(ip, '') == 'home':
-				ws.send(f"update({json.dumps(status_full)})")
-			elif ip2pane.get(ip, '') == 'queue':
-				ws.send(f"update({json.dumps(K.queue_json)})")
+		broadcast({'type': 'status', 'data': status_full})
 		K.status_dirty = False
-
-# Define global symbols for Jinja templates 
-@app.context_processor
-def inject_stage_and_region():
-	return {'getString': getString, 'getString1': getString}
 
 
 @app.before_request
 def preprocessor():
 	client_lang = request.cookies.get('lang', None)
 	if client_lang is None:
-		lang_str = request.cookies.get('Accept-Language', os.lang)
+		lang_str = request.headers.get('Accept-Language', os.lang)
 		for k in [j for i in lang_str.split(';') for j in i.split(',')]:
-			client_lang = find_language(k)
+			client_lang = find_language(k.strip())
 			if client_lang is not None:
 				break
 	request.client_lang = find_language(client_lang or os.lang)
@@ -122,10 +133,6 @@ def filename_from_path(file_path, remove_youtube_id = True):
 	return rc
 
 
-def url_escape(filename):
-	return quote(filename.encode("utf8"))
-
-
 def is_admin():
 	if (admin_password == None):
 		return True
@@ -136,57 +143,70 @@ def is_admin():
 	return False
 
 
+def admin_only(f):
+	@wraps(f)
+	def wrapper(*a, **kw):
+		if not is_admin():
+			return jsonify(ok = False, error = getString2(S_ADMIN_ONLY)), 403
+		return f(*a, **kw)
+	return wrapper
+
+
+def is_song_file(path):
+	"""Only songs of the library may be queued, renamed or deleted from the web page."""
+	try:
+		return os.path.isfile(path) and os.path.realpath(os.path.dirname(path)) == os.path.realpath(K.download_path.rstrip('/\\'))
+	except Exception:
+		return False
+
+
+# ---------------------------------------------------------------------------- the page
+
+APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'app')
+
 @app.route("/")
 def root():
-	s = K.get_state()
-	return render_template(
-		"index.html",
-		getString1 = lambda ii: getString1(request.client_lang, ii),
-		show_transpose = K.use_vlc,
-		transpose_value = K.now_playing_transpose,
-		volume = s['volume'],
+	index = os.path.join(APP_DIR, 'index.html')
+	if not os.path.isfile(index):
+		return ('The web interface is not built. Run "npm install" and "npm run build" in the frontend folder, '
+		        'see doc/ for details.'), 500
+	resp = send_file(index, mimetype = 'text/html')
+	resp.headers['Cache-Control'] = 'no-cache'
+	return resp
+
+RTL_LANGS = {'ar', 'fa', 'he', 'ur', 'yi', 'ps', 'sd', 'ug'}
+
+@app.route("/api/config")
+def api_config():
+	"""Everything the page needs at start: its strings in the user's language, and what this
+	server can do."""
+	lang = request.client_lang
+	texts = os.langs[lang]
+	en = os.langs['en_US']
+	n = max(max(en.keys()), max(texts.keys()))
+	strings = [''] + [texts.get(i) or en.get(i, '') for i in range(1, n + 1)]
+	return jsonify(
+		lang = lang,
+		dir = 'rtl' if lang.split('_')[0] in RTL_LANGS else 'ltr',
+		strings = strings,
+		langs = [[k, v[1]] for k, v in os.langs.items()],
 		admin = is_admin(),
-		seektrack_value = s['time'],
-		seektrack_max = s['length'],
-		audio_delay = s['audiodelay'],
-		play_speed = s['rate'],
-		vocal_info = K.get_vocal_info(),
+		admin_enabled = admin_password != None,
+		asr = bool(getattr(args, 'cloud', '')),
+		use_vlc = K.use_vlc,
+		high_quality = K.high_quality,
+		platform = K.platform,
+		is_pi = get_platform() == "raspberry_pi",
+		version = VERSION,
+		url = K.url,
+		https_port = (K.port if K.ssl else K.port + 1),
 	)
 
-@app.route("/home")
-def home():
-	s = K.get_state()
-	return render_template(
-		"home.html",
-		getString1 = lambda ii: getString1(request.client_lang, ii),
-		show_transpose = K.use_vlc,
-		transpose_value = K.now_playing_transpose,
-		volume = s['volume'],
-		admin = is_admin(),
-		seektrack_value = s['time'],
-		seektrack_max = s['length'],
-		audio_delay = s['audiodelay'],
-		play_speed = s['rate'],
-		vocal_info = K.get_vocal_info(),
-	)
-@app.route("/f_home")
-def f_home():
-	ip2pane[request.remote_addr] = 'home'
-	s = K.get_state()
-	return render_template(
-		"f_home.html",
-		getString1 = lambda ii: getString1(request.client_lang, ii),
-		show_transpose = K.use_vlc,
-		transpose_value = K.now_playing_transpose,
-		volume = s['volume'],
-		admin = is_admin(),
-		seektrack_value = s['time'],
-		seektrack_max = s['length'],
-		audio_delay = s['audiodelay'],
-		play_speed = s['rate'],
-		vocal_info = K.get_vocal_info(),
-	)
 
+# ---------------------------------------------------------------------------- now playing and player
+
+def split_payload(path):
+	return K.split_states([path]).get(path) if path else None
 
 @app.route("/nowplaying")
 def nowplaying(return_json=True):
@@ -199,6 +219,7 @@ def nowplaying(return_json=True):
 		rc = {
 			"now_playing": K.now_playing,
 			"now_playing_user": K.now_playing_user,
+			"now_playing_file": K.now_playing_filename,
 			"up_next": next_song,
 			"next_user": next_user,
 			"is_paused": s.get('state', 'paused') == 'paused',
@@ -209,28 +230,92 @@ def nowplaying(return_json=True):
 			"audio_delay": s['audiodelay'],
 			"vol_norm": K.normalize_vol,
 			"play_speed": s['rate'],
-			"vocal_info": K.get_vocal_info()
+			"vocal_info": K.get_vocal_info(),
+			"split": split_payload(K.now_playing_filename),
+			"splitter": K.splitter_state(),
 		}
 		if K.has_subtitle:
 			rc['subtitle_delay'] = s['subtitledelay']
 			rc['show_subtitle'] = K.show_subtitle
 		return json.dumps(rc) if return_json else rc
 	except Exception as e:
-		logging.error(f"Problem loading /nowplaying, pikaraoke may still be starting up: {e}\n{traceback.print_exc()}")
+		logging.error(f"Problem loading /nowplaying, OpenHomeKaraoke may still be starting up: {e}\n{traceback.format_exc()}")
 		return "" if return_json else {}
 
+
+@app.route("/skip")
+def skip():
+	K.skip()
+	return ''
+
+@app.route("/pause")
+def pause():
+	K.pause()
+	return json.dumps(K.is_paused)
+
+@app.route("/transpose/<semitones>", methods = ["GET"])
+def transpose(semitones):
+	K.play_transposed(semitones)
+	return ''
+
+@app.route("/play_vocal/<mode>", methods = ["GET"])
+def play_vocal(mode):
+	K.play_vocal(mode)
+	return ''
+
+@app.route("/play_speed/<speed>", methods = ["GET"])
+def play_speed(speed):
+	K.play_speed_set(speed)
+	return ''
+
+@app.route("/seek/<goto_sec>", methods = ["GET"])
+def seek(goto_sec):
+	K.seek(goto_sec)
+	return ''
+
+@app.route("/audio_delay/<delay_val>", methods = ["GET"])
+def audio_delay(delay_val):
+	return json.dumps(K.set_audio_delay(delay_val))
+
+@app.route("/subtitle_delay/<delay_val>", methods = ["GET"])
+def subtitle_delay(delay_val):
+	return json.dumps(K.set_subtitle_delay(delay_val))
+
+@app.route("/toggle_subtitle")
+def toggle_subtitle():
+	K.toggle_subtitle()
+	return ''
+
+@app.route("/restart")
+def restart():
+	K.restart()
+	return ''
+
+@app.route("/vol_up")
+def vol_up():
+	return str(K.vol_up())
+
+@app.route("/vol_down")
+def vol_down():
+	return str(K.vol_down())
+
+@app.route("/vol/<volume>")
+def vol_set(volume):
+	return str(K.vol_set(volume))
+
+
+# ---------------------------------------------------------------------------- users and languages
 
 @app.route("/get_lang_list")
 def get_lang_list():
 	return json.dumps({k: v[1] for k, v in os.langs.items()}, sort_keys = False)
 
-
 @app.route("/auto_username")
 def auto_username():
 	return f'user-{len(ip2websock)+1}'
 
-
 @app.route("/change_language/<language>")
+@admin_only
 def change_language(language):
 	try:
 		set_language(language)
@@ -238,35 +323,20 @@ def change_language(language):
 		logging.error(f"Failed to set server language to {language}")
 	return os.lang
 
-
-@app.route("/auth", methods = ["POST"])
-def auth():
-	d = request.form.to_dict()
-	p = d["admin-password"]
-	if (p == admin_password):
-		resp = make_response(redirect('/'))
-		expire_date = datetime.datetime.now()
-		expire_date = expire_date + datetime.timedelta(days = 90)
-		resp.set_cookie('admin', admin_password, expires = expire_date)
-		flash(getString(1), "is-success")
-	else:
-		resp = make_response(redirect(url_for('login')))
-		flash(getString(2), "is-danger")
+@app.route("/api/login", methods = ["POST"])
+def api_login():
+	p = (request.get_json(silent = True) or {}).get('password', '')
+	if admin_password is None or p != admin_password:
+		return jsonify(ok = False, error = getString2(2)), 403
+	resp = jsonify(ok = True, message = getString2(1))
+	resp.set_cookie('admin', admin_password, expires = datetime.datetime.now() + datetime.timedelta(days = 90), samesite = 'Lax')
 	return resp
 
-
-@app.route("/login")
-def login():
-	return render_template("login.html")
-
-
-@app.route("/logout")
-def logout():
-	resp = make_response(redirect('/'))
-	resp.set_cookie('admin', '')
-	flash(getString(3), "is-success")
+@app.route("/api/logout", methods = ["POST", "GET"])
+def api_logout():
+	resp = jsonify(ok = True, message = getString2(3))
+	resp.set_cookie('admin', '', expires = 0)
 	return resp
-
 
 @app.route("/user_rename/<old_name>/<new_name>")
 def user_rename(old_name, new_name):
@@ -283,6 +353,8 @@ def user_rename(old_name, new_name):
 	return ''
 
 
+# ---------------------------------------------------------------------------- vocal splitter
+
 @app.route("/get_vocal_todo_list/<vocal_device>/")
 @app.route("/get_vocal_todo_list/<vocal_device>/<path:last_completed>")
 def get_vocal_todo_list(vocal_device, last_completed=''):
@@ -293,360 +365,190 @@ def get_vocal_todo_list(vocal_device, last_completed=''):
 	q = ([K.now_playing_filename] if K.now_playing_filename else []) + [i['file'] for i in K.queue]
 	return json.dumps({'download_path': K.download_path, 'queue': q, 'use_DNN': K.use_DNN_vocal, 'model': K.vocal_model})
 
-
 @app.route("/save_delays/<state>")
+@admin_only
 def set_save_delays(state):
 	K.set_save_delays(state.lower() == 'true')
 	return ''
 
-
 @app.route("/set_vocal_mode/<mode>")
+@admin_only
 def set_vocal_mode(mode):
 	# old on/off switch: true = neural network (default model), false = L-R/L+R
-	if is_admin():
-		K.set_vocal_model(vm.DEFAULT_MODEL if mode.lower() == 'true' else 'LR')
+	K.set_vocal_model(vm.DEFAULT_MODEL if mode.lower() == 'true' else 'LR')
 	return ''
-
 
 @app.route("/set_vocal_model/<model>")
+@admin_only
 def set_vocal_model(model):
-	if is_admin():
-		K.set_vocal_model(model)
+	K.set_vocal_model(model)
+	K.status_dirty = True
 	return ''
-
 
 @app.route("/vocal_split/<state>")
+@admin_only
 def vocal_split(state):
-	if is_admin():
-		enabled = state.lower() == 'true'
-		set_split_enabled(K.download_path, enabled)
-		if enabled:
-			K.vocal_restart()
-		else:
-			K.vocal_stop()
+	enabled = state.lower() == 'true'
+	set_split_enabled(K.download_path, enabled)
+	if enabled:
+		K.vocal_restart()
+	else:
+		K.vocal_stop()
+	K.status_dirty = True
 	return ''
 
-
 @app.route("/norm_vol/<mode>", methods = ["GET"])
+@admin_only
 def norm_vol(mode):
 	K.enable_vol_norm(mode.lower() == 'true')
 	return ''
 
+@app.route("/bg-process/<cmd>")
+@admin_only
+def bg_process(cmd):
+	if cmd == 'streamer-restart':
+		K.streamer_restart()
+	elif cmd == 'streamer-stop':
+		K.streamer_stop()
+	elif cmd == 'vocal-restart':
+		K.vocal_restart()
+	elif cmd == 'vocal-stop':
+		K.vocal_stop()
+	K.status_dirty = True
+	return ''
 
-@app.route("/queue")
-def queue():
-	return render_template("queue.html", getString1 = lambda ii: getString1(request.client_lang, ii), queue = K.queue, admin = is_admin())
-@app.route("/f_queue")
-def f_queue():
-	ip2pane[request.remote_addr] = 'queue'
-	return render_template("f_queue.html", getString1 = lambda ii: getString1(request.client_lang, ii), queue = K.queue, admin = is_admin())
 
+# ---------------------------------------------------------------------------- queue
+
+def queue_payload():
+	states = K.split_states([q['file'] for q in K.queue])
+	return [dict(q, split = states.get(q['file'])) for q in K.queue]
 
 @app.route("/get_queue", methods = ["GET"])
 def get_queue():
-	return K.queue_json
-
+	return jsonify(queue_payload())
 
 @app.route("/queue/addrandom", methods = ["GET"])
 def add_random():
-	amount = int(request.args["amount"])
+	amount = int(request.args.get("amount", 3))
 	rc = K.queue_add_random(amount)
-	if rc:
-		flash(getString(4) % amount, "is-success")
-	else:
-		flash(getString(5), "is-warning")
-	return ''
+	return jsonify(ok = bool(rc), message = (getString2(4) % amount) if rc else getString2(5))
 
-
-@app.route("/queue/edit", methods = ["GET"])
+@app.route("/queue/edit", methods = ["GET", "POST"])
+@admin_only
 def queue_edit():
-	action = request.args["action"]
+	d = request.values.to_dict() | (request.get_json(silent = True) or {})
+	action = d.get("action", "")
 	if action == "clear":
 		K.queue_clear()
-		flash(getString(6), "is-warning")
-		return redirect(url_for("queue"))
-	elif action == "move":
-		try:
-			id_from = request.args['from']
-			id_to = request.args['to']
-			id_size = request.args['size']
-		except:
-			flash(getString(7))
-
-		result = K.queue_edit(None, "move", src=id_from, tgt=id_to, size=id_size)
-		if result:
-			flash(f"{getString(8)} {id_from}->{id_to}/{id_size}")
-		else:
-			flash(f"{getString(9)} {id_from}->{id_to}/{id_size}")
-	else:
-		song = request.args["song"]
-		song = unquote(song)
-		if action == "down":
-			result = K.queue_edit(song, "down")
-			if result:
-				flash(getString(10) + song, "is-success")
-			else:
-				flash(getString(11) + song, "is-danger")
-		elif action == "up":
-			result = K.queue_edit(song, "up")
-			if result:
-				flash(getString(12) + song, "is-success")
-			else:
-				flash(getString(13) + song, "is-danger")
-		elif action == "delete":
-			result = K.queue_edit(song, "delete")
-			if result:
-				flash(getString(14) + song, "is-success")
-			else:
-				flash(getString(15) + song, "is-danger")
-	return redirect(url_for("queue"))
-
+		return jsonify(ok = True, message = getString2(6))
+	if action == "move":
+		ok = K.queue_edit(None, "move", src = d.get('from'), tgt = d.get('to'), size = d.get('size'))
+		return jsonify(ok = bool(ok))
+	song = unquote(d.get("song", ""))
+	if action == "insert":
+		ok = is_song_file(song) and K.queue_insert(d.get('index', 0), song, d.get('user', 'Pikaraoke'))
+		return jsonify(ok = bool(ok))
+	if action in ("up", "down", "top", "delete"):
+		return jsonify(ok = bool(K.queue_edit(song, action)))
+	return jsonify(ok = False, error = 'unknown action'), 400
 
 @app.route("/enqueue", methods = ["POST", "GET"])
 def enqueue():
-	d = request.values.to_dict()
-	song = d['song' if 'song' in d else 'song-to-add']
-	user = d['user' if 'user' in d else 'song-added-by']
-	rc = K.enqueue(song, user)
-	song_title = filename_from_path(song)
-	return json.dumps({"song": song_title, "success": rc})
+	d = request.values.to_dict() | (request.get_json(silent = True) or {})
+	song = d.get('song') or d.get('song-to-add', '')
+	user = d.get('user') or d.get('song-added-by', 'Pikaraoke')
+	rc = is_song_file(song) and K.enqueue(song, user)
+	return json.dumps({"song": filename_from_path(song), "success": bool(rc)})
 
 
-@app.route("/skip")
-def skip():
-	K.skip()
-	return ''
+# ---------------------------------------------------------------------------- library
 
-
-@app.route("/pause")
-def pause():
-	K.pause()
-	return json.dumps(K.is_paused)
-
-
-@app.route("/transpose/<semitones>", methods = ["GET"])
-def transpose(semitones):
-	K.play_transposed(semitones)
-	return ''
-
-
-@app.route("/play_vocal/<mode>", methods = ["GET"])
-def play_vocal(mode):
-	K.play_vocal(mode)
-	return ''
-
-
-@app.route("/play_speed/<speed>", methods = ["GET"])
-def play_speed(speed):
-	K.play_speed_set(speed)
-	return ''
-
-
-@app.route("/seek/<goto_sec>", methods = ["GET"])
-def seek(goto_sec):
-	K.seek(goto_sec)
-	return ''
-
-
-@app.route("/audio_delay/<delay_val>", methods = ["GET"])
-def audio_delay(delay_val):
-	res = K.set_audio_delay(delay_val)
-	return json.dumps(res)
-
-
-@app.route("/subtitle_delay/<delay_val>", methods = ["GET"])
-def subtitle_delay(delay_val):
-	res = K.set_subtitle_delay(delay_val)
-	return json.dumps(res)
-
-
-@app.route("/toggle_subtitle")
-def toggle_subtitle():
-	K.toggle_subtitle()
-	return ''
-
-
-@app.route("/restart")
-def restart():
-	K.restart()
-	return redirect(url_for("home"))
-
-
-@app.route("/vol_up")
-def vol_up():
-	return str(K.vol_up())
-
-
-@app.route("/vol_down")
-def vol_down():
-	return str(K.vol_down())
-
-
-@app.route("/vol/<volume>")
-def vol_set(volume):
-	return str(K.vol_set(volume))
-
-
-@app.route("/search", methods = ["GET"])
-def search():
-	if "search_string" in request.args:
-		search_string = request.args["search_string"]
-		search_karaoke = request.args.get('non_karaoke', 'false') == "true"
-		search_results = K.get_search_results(search_string + (" karaoke" if search_karaoke else ""))
-	else:
-		search_string = None
-		search_results = None
-		search_karaoke = False
-	return render_template(
-		"search.html",
-		getString1 = lambda ii: getString1(request.client_lang, ii),
-		songs = K.available_songs,
-		high_quality = K.high_quality,
-		search_results = search_results,
-		search_string = search_string,
-		search_karaoke = search_karaoke
-	)
-@app.route("/f_search", methods = ["GET", "POST"])
-def f_search():
-	ip2pane[request.remote_addr] = 'search'
-	dct = request.values.to_dict()
-	if "search_string" in dct:
-		search_string = dct["search_string"]
-		search_karaoke = dct.get('non_karaoke', 'false') == "true"
-		search_results = K.get_search_results(search_string + (" karaoke" if search_karaoke else ""))
-	else:
-		search_string = ''
-		search_results = None
-		search_karaoke = False
-	return render_template(
-		"f_search.html",
-		getString1 = lambda ii: getString1(request.client_lang, ii),
-		songs = K.available_songs,
-		high_quality = K.high_quality,
-		search_results = search_results,
-		search_karaoke = search_karaoke
-	)
-
-
-@app.route("/autocomplete")
-def autocomplete():
-	q = request.args.get('q').lower()
-	result = []
-	for each in K.available_songs:
-		if q in each.lower():
-			result.append({"path": each, "fileName": K.filename_from_path(each), "type": "autocomplete"})
-	response = app.response_class(
-		response = json.dumps(result),
-		mimetype = 'application/json'
-	)
-	return response
-
+@app.route("/api/library")
+def api_library():
+	songs = K.available_songs
+	if request.args.get('sort') == 'date':
+		songs = sorted(songs, key = lambda x: os.path.getctime(x) if os.path.exists(x) else 0, reverse = True)
+	queued = {q['file'] for q in K.queue}
+	return jsonify([{'file': s, 'title': K.filename_from_path(s), 'queued': s in queued} for s in songs])
 
 @app.route("/suggest")
 def suggest():
-	q = request.args.get('q').lower()
+	q = request.args.get('q', '').lower()
 	res = {K.filename_from_path(s):s for s in K.available_songs if q in s.lower()}
 	return json.dumps(res)
 
+@app.route("/refresh")
+@admin_only
+def refresh():
+	K.get_available_songs()
+	return jsonify(ok = True, count = len(K.available_songs))
 
-@app.route("/browse", methods = ["GET"])
-def browse():
-	search = bool(request.args.get('q'))
-	page = request.args.get(get_page_parameter(), type = int, default = 1)
+@app.route("/files/delete", methods = ["GET", "POST"])
+@admin_only
+def delete_file():
+	song_path = request.values.get("song", "")
+	if not is_song_file(song_path):
+		return jsonify(ok = False, error = getString2(21)), 400
+	if K.is_song_in_queue(song_path) or song_path == K.now_playing_filename:
+		return jsonify(ok = False, error = getString2(19) + filename_from_path(song_path)), 409
+	K.delete(song_path)
+	return jsonify(ok = True, message = getString2(20) + filename_from_path(song_path))
 
-	letter = request.args.get('letter')
+@app.route("/edit_song", methods = ["POST"])
+@admin_only
+def rename():
+	d = request.values.to_dict() | (request.get_json(silent = True) or {})
+	old_name, new_name = d.get("old_file_name", ""), d.get("new_file_name", "").strip()
+	if not is_song_file(old_name) or not new_name or os.sep in new_name or '/' in new_name:
+		return jsonify(ok = False, error = getString2(220)), 400
+	if old_name == K.now_playing_filename:
+		return jsonify(ok = False, error = getString2(22) + filename_from_path(old_name)), 409
+	file_extension = os.path.splitext(old_name)[1]
+	if os.path.isfile(os.path.join(K.download_path, new_name + file_extension)):
+		return jsonify(ok = False, error = getString2(24) % (filename_from_path(old_name), new_name + file_extension)), 409
+	K.rename(old_name, new_name)
+	return jsonify(ok = True, message = getString2(25) % (filename_from_path(old_name), new_name))
 
-	available_songs = K.available_songs
-	if letter:
-		if (letter == "numeric"):
-			available_songs = [k for k,v in K.songname_trans.items() if not v[0].islower()]
-		else:
-			available_songs = [k for k,v in K.songname_trans.items() if v.startswith(letter)]
 
-	if "sort" in request.args and request.args["sort"] == "date":
-		songs = sorted(available_songs, key = lambda x: os.path.getctime(x))
-		songs.reverse()
-		sort_order = "Date"
-		sort_order_text = getString2(99)
-	else:
-		songs = available_songs
-		sort_order = "Alphabetical"
-		sort_order_text = getString2(100)
+# ---------------------------------------------------------------------------- YouTube
 
-	results_per_page = 500
-	pagination = Pagination(css_framework = 'bulma', page = page, total = len(songs), search = search, search_msg = getString2(103),
-	                        record_name = getString2(101), display_msg = getString2(102), per_page = results_per_page)
-	start_index = (page - 1) * (results_per_page - 1)
-	return render_template(
-		"files.html",
-		getString1 = getString2,
-		pagination = pagination,
-		sort_order = sort_order,
-		sort_order_text = sort_order_text,
-		letter = letter,
-		title = getString2(98),
-		songs = songs[start_index:start_index + results_per_page],
-		admin = is_admin()
-	)
-@app.route("/f_browse", methods = ["GET"])
-def f_browse():
-	ip2pane[request.remote_addr] = 'browse'
-	search = bool(request.args.get('q'))
-	page = request.args.get(get_page_parameter(), type = int, default = 1)
-
-	letter = request.args.get('letter')
-
-	available_songs = K.available_songs
-	if letter:
-		if (letter == "numeric"):
-			available_songs = [k for k,v in K.songname_trans.items() if not v[0].islower()]
-		else:
-			available_songs = [k for k,v in K.songname_trans.items() if v.startswith(letter)]
-
-	if request.cookies.get("sort") == "date":
-		songs = sorted(available_songs, key = lambda x: os.path.getctime(x))
-		songs.reverse()
-		sort_order = "Date"
-		sort_order_text = getString2(99)
-	else:
-		songs = available_songs
-		sort_order = "Alphabetical"
-		sort_order_text = getString2(100)
-
-	results_per_page = 500
-	pagination = Pagination(css_framework = 'bulma', page = page, total = len(songs), search = search, search_msg = getString2(103),
-	                        record_name = getString2(101), display_msg = getString2(102), per_page = results_per_page)
-	start_index = (page - 1) * (results_per_page - 1)
-	return render_template(
-		"f_browse.html",
-		getString1 = getString2,
-		pagination = pagination,
-		sort_order = sort_order,
-		sort_order_text = sort_order_text,
-		letter = letter,
-		title = getString2(98),
-		songs = songs[start_index:start_index + results_per_page],
-		admin = is_admin()
-	)
+@app.route("/api/search")
+def api_search():
+	q = request.args.get('q', '').strip()
+	if not q:
+		return jsonify(results = [])
+	karaoke_only = request.args.get('karaoke', 'false') == 'true'
+	try:
+		rc = K.get_search_results(q + (" karaoke" if karaoke_only else ""))
+	except Exception as e:
+		logging.error(f'YouTube search failed: {e}')
+		return jsonify(results = [], error = str(e)[:300]), 502
+	return jsonify(results = [{'title': t, 'url': u, 'id': i, 'duration': d} for t, u, i, d in rc])
 
 def transform_boolean(dct, S):
-	return {k: ((v=='on') if k in S else v) for k, v in dct.items()}
+	return {k: ((v in ('on', True, 'true')) if k in S else v) for k, v in dct.items()}
 
 @app.route("/download", methods = ["POST"])
 def download():
-	dct = transform_boolean(request.form.to_dict(), {'enqueue', 'include_subtitles', 'high_quality'})
-
+	dct = request.form.to_dict() | (request.get_json(silent = True) or {})
+	dct = transform_boolean({k: dct[k] for k in ('song_url', 'song_added_by', 'enqueue', 'include_subtitles', 'high_quality') if k in dct},
+	                        {'enqueue', 'include_subtitles', 'high_quality'})
+	if not dct.get('song_url'):
+		return jsonify(ok = False), 400
 	# download in the background since this can take a few minutes
 	t = threading.Thread(target = K.download_video, kwargs = dct|{'client_ip': request.remote_addr, 'client_lang': request.client_lang})
 	t.daemon = True
 	t.start()
+	return jsonify(ok = True, message = getString2(16) + dct["song_url"] + '\n' + getString2(17 if dct.get('enqueue', False) else 18))
 
-	return getString(16) + dct["song_url"] + '\n' + getString(17 if dct.get('enqueue', False) else 18)
-
-@app.route("/check_download", methods = ["POST"])
+@app.route("/check_download", methods = ["POST", "GET"])
 def check_download():
 	ret = K.downloading_songs.get(request.values.get('url', None), 1)
 	return str(ret)
+
+
+# ---------------------------------------------------------------------------- settings page
 
 @app.route("/qrcode")
 def qrcode():
@@ -654,211 +556,44 @@ def qrcode():
 
 @app.route("/logo")
 def logo():
-	return send_file(K.logo_path, mimetype="image/png")
+	return send_file(K.logo_path)
 
-@app.route("/files/delete", methods = ["GET"])
-def delete_file():
-	if "song" in request.args:
-		song_path = request.args["song"]
-		if K.is_song_in_queue(song_path):
-			flash(getString(19) + song_path, "is-danger")
-		else:
-			K.delete(song_path)
-			flash(getString(20) + song_path, "is-warning")
-	else:
-		flash(getString(21), "is-danger")
-	return redirect(url_for("browse"))
-
-
-@app.route("/files/edit", methods = ["GET", "POST"])
-def edit_file():
-	queue_error_msg = getString(22)
-	if "song" in request.args:
-		song_path = request.args["song"]
-		if song_path == K.now_playing_filename:
-			flash(queue_error_msg + song_path, "is-danger")
-			return redirect(url_for("browse"))
-		else:
-			return render_template("edit.html", getString1 = lambda ii: getString1(request.client_lang, ii), title = getString(23), song = song_path.encode("utf-8"))
-	else:
-		d = request.form.to_dict()
-		if "new_file_name" in d and "old_file_name" in d:
-			new_name = d["new_file_name"]
-			old_name = d["old_file_name"]
-			if old_name == K.now_playing_filename:
-				flash(queue_error_msg + old_name, "is-danger")
-			else:
-				# check if new_name already exist
-				file_extension = os.path.splitext(old_name)[1]
-				if os.path.isfile(os.path.join(K.download_path, new_name + file_extension)):
-					flash(getString(24) % (old_name, new_name + file_extension), "is-danger")
-				else:
-					K.rename(old_name, new_name)
-					flash(getString(25) % (old_name, new_name), "is-warning")
-		else:
-			flash(getString(26), "is-danger")
-		return redirect(url_for("browse"))
-
-@app.route("/f_edit", methods = ["GET", "POST"])
-def f_edit():
-	song_path = request.args["song"]
-	if song_path == K.now_playing_filename:
-		flash(getString2(22) + song_path, "is-danger")
-		return '', 400
-	else:
-		song = AudSeg.from_file(song_path)
-		return render_template("f_edit.html", getString1 = lambda ii: getString1(request.client_lang, ii), dBFS = '%.2f'%song.dBFS,
-			hhmmss = sec2hhmmss(song.duration_seconds), title = getString(23), song = song_path.encode("utf-8"))
-
-@app.route("/edit_song", methods = ["POST"])
-def rename():
-	d = request.form
-	if "new_file_name" in d and "old_file_name" in d:
-		new_name = d["new_file_name"]
-		old_name = d["old_file_name"]
-		if old_name == K.now_playing_filename:
-			flash(getString2(22) + old_name, "is-danger")
-		elif new_name != old_name:
-			# check if new_name already exist
-			file_extension = os.path.splitext(old_name)[1]
-			if os.path.isfile(os.path.join(K.download_path, new_name + file_extension)):
-				flash(getString2(24) % (old_name, new_name + file_extension), "is-danger")
-			else:
-				K.rename(old_name, new_name)
-				flash(getString2(25) % (old_name, new_name), "is-info")
-				return f_browse()
-	else:
-		flash(getString2(220), "is-danger")
-	return '', 400
-
-
-@app.route("/splash")
-def splash():
-	return render_template(
-		"splash.html",
-		getString1 = lambda ii: getString1(request.client_lang, ii),
-		blank_page=True,
-		url=request.url_root
-	)
-
-@app.route("/info")
-def info():
-	url = K.url
-
-	# cpu
-	cpu = str(psutil.cpu_percent()) + "%"
-
-	# mem
+@app.route("/api/settings")
+def api_settings():
 	memory = psutil.virtual_memory()
-	available = round(memory.available / 1024.0 / 1024.0, 1)
-	total = round(memory.total / 1024.0 / 1024.0, 1)
-	memory = str(available) + "MB free / " + str(total) + "MB total ( " + str(memory.percent) + "% )"
-
-	# disk
-	disk = psutil.disk_usage("/")
-	# Divide from Bytes -> KB -> MB -> GB
-	free = round(disk.free / 1024.0 / 1024.0 / 1024.0, 1)
-	total = round(disk.total / 1024.0 / 1024.0 / 1024.0, 1)
-	disk = str(free) + "GB free / " + str(total) + "GB total ( " + str(disk.percent) + "% )"
-
-	# whether screencapture.sh and vocal_splitter.py is running
-	get_status = lambda t: getString2(27) if t is None else (getString2(28) if t else getString2(29))
-	screencapture = K.streamer_alive()
-	vocalsplitter = K.vocal_alive()
-	vocal_extra = ''
-	if vocalsplitter:
-		vocal_extra = getString2(30) if K.vocal_device == 'cpu' else getString2(31)
-
-	# youtube-dl
-	youtubedl_version = K.youtubedl_version
-
-	is_pi = get_platform() == "raspberry_pi"
-
-	return render_template(
-		"info.html",
-		getString1 = getString2,
-		langs = os.langs, lang = os.lang,
-		ostype = sys.platform.upper(),
-		url = url,
-		memory = memory,
-		cpu = cpu,
-		disk = disk,
-		youtubedl_version = youtubedl_version,
-		is_pi = is_pi,
-		use_DNN = K.use_DNN_vocal,
-		vocal_model = K.vocal_model,
-		model_status = {m: vm.model_status(m) for m in vm.ALL_MODELS},
-		norm_vol = K.normalize_vol,
-		pikaraoke_version = VERSION,
-		download_path = K.download_path,
-		num_of_songs = len(K.available_songs),
-		screencapture = get_status(screencapture),
-		vocalsplitter = get_status(vocalsplitter) + vocal_extra,
+	disk = psutil.disk_usage(K.download_path)
+	rc = dict(
+		url = K.url,
+		version = VERSION,
+		os = sys.platform,
 		platform = K.platform,
-		save_delays = bool(K.save_delays),
-		vocal_split = not is_split_disabled(K.download_path),
-		admin = is_admin(),
-		admin_enabled = admin_password != None
-	)
-@app.route("/f_info")
-def f_info():
-	url = K.url
-
-	# cpu
-	cpu = str(psutil.cpu_percent()) + "%"
-
-	# mem
-	memory = psutil.virtual_memory()
-	available = round(memory.available / 1024.0 / 1024.0, 1)
-	total = round(memory.total / 1024.0 / 1024.0, 1)
-	memory = str(available) + "MB free / " + str(total) + "MB total ( " + str(memory.percent) + "% )"
-
-	# disk
-	disk = psutil.disk_usage("/")
-	# Divide from Bytes -> KB -> MB -> GB
-	free = round(disk.free / 1024.0 / 1024.0 / 1024.0, 1)
-	total = round(disk.total / 1024.0 / 1024.0 / 1024.0, 1)
-	disk = str(free) + "GB free / " + str(total) + "GB total ( " + str(disk.percent) + "% )"
-
-	# whether screencapture.sh and vocal_splitter.py is running
-	get_status = lambda t: getString2(27) if t is None else (getString2(28) if t else getString2(29))
-	screencapture = K.streamer_alive()
-	vocalsplitter = K.vocal_alive()
-	vocal_extra = ''
-	if vocalsplitter:
-		vocal_extra = getString2(30) if K.vocal_device == 'cpu' else getString2(31)
-
-	# youtube-dl
-	youtubedl_version = K.youtubedl_version
-
-	is_pi = get_platform() == "raspberry_pi"
-
-	return render_template(
-		"f_info.html",
-		getString1 = getString2,
-		langs = os.langs, lang = os.lang,
-		ostype = sys.platform.upper(),
-		url = url,
-		memory = memory,
-		cpu = cpu,
-		disk = disk,
-		youtubedl_version = youtubedl_version,
-		is_pi = is_pi,
-		use_DNN = K.use_DNN_vocal,
-		vocal_model = K.vocal_model,
-		model_status = {m: vm.model_status(m) for m in vm.ALL_MODELS},
-		norm_vol = K.normalize_vol,
-		pikaraoke_version = VERSION,
+		cpu = psutil.cpu_percent(),
+		memory = {'free': memory.available, 'total': memory.total},
+		disk = {'free': disk.free, 'total': disk.total},
 		download_path = K.download_path,
-		num_of_songs = len(K.available_songs),
-		screencapture = get_status(screencapture),
-		vocalsplitter = get_status(vocalsplitter) + vocal_extra,
-		platform = K.platform,
-		save_delays = bool(K.save_delays),
-		vocal_split = not is_split_disabled(K.download_path),
+		num_songs = len(K.available_songs),
+		youtubedl_version = K.youtubedl_version,
+		streamer = K.streamer_alive() if K.platform == 'linux' else None,
+		splitter = K.splitter_state(),
+		splitter_missing = K.vocal_splitter_missing(),
+		splitter_device = getattr(K, 'vocal_device', None),
 		admin = is_admin(),
-		admin_enabled = admin_password != None
+		admin_enabled = admin_password != None,
+		is_pi = get_platform() == "raspberry_pi",
 	)
+	if is_admin():
+		rc.update(
+			save_delays = bool(K.save_delays),
+			norm_vol = K.normalize_vol,
+			vocal_split = not is_split_disabled(K.download_path),
+			vocal_model = K.vocal_model,
+			models = [{'id': m, 'status': vm.model_status(m)} for m in vm.ALL_MODELS],
+			server_lang = os.lang,
+		)
+	return jsonify(rc)
+
+
+# ---------------------------------------------------------------------------- speech recognition
 
 def run_asr():
 	global args
@@ -867,32 +602,21 @@ def run_asr():
 	asr_output = json.loads(r.text) if r.status_code==200 else {}
 	return asr_output, r
 
-def _add_spoken(client_ip, user, getString):
-	asr_output, r = run_asr()
-
-	print(f'ASR result: {asr_output}', file=sys.stderr)
-	if asr_output=={} or type(asr_output)==str:
-		return logging.error(f'Cloud ASR returns HTTP status code = {r.status_code} ()')
-	elif not asr_output['text']:
-		return logging.error(f'ASR output is empty')
-
-	res = findMedia(K.download_path, asr_postprocess(asr_output['text']), lang=asr_output['language'])
-	ws = ip2websock.get(client_ip, '')
-	if not res:
-		return ws.send(f"showNotification({json.dumps(fill_s(getString(226), asr_output['text']))}, 'is-info')")
-	res_titles = [filename_from_path(s) for s in res]
-	if len(res)==1:
-		add_res = K.enqueue(res[0], user)
-		return ws.send(f'add1song({json.dumps(res_titles[0])},{json.dumps(res[0])})' if add_res else f"showNotification({json.dumps(getString(116)+res_titles[0])}, 'is-info')")
-	return ws.send(f"addSongs({json.dumps(json.dumps([res_titles, res]))})")
-
-
-@app.route('/add_spoken/<user>', methods=['POST'])
-def add_spoken(user):
+@app.route('/api/voice_find', methods=['POST'])
+def api_voice_find():
+	"""Recognise what the user said and look for matching songs in the library (needs --cloud)."""
+	if not getattr(args, 'cloud', ''):
+		return jsonify(text = '', matches = [], error = 'no speech recognition server (--cloud)'), 501
 	with open(f'{K.tmp_dir}/rec.webm', 'wb') as fp:
 		fp.write(request.data)
-	threading.Thread(target=_add_spoken, args=(request.remote_addr, user, getString)).start()
-	return 'OK'
+	try:
+		asr_output, r = run_asr()
+	except Exception as e:
+		return jsonify(text = '', matches = [], error = str(e)[:300]), 502
+	if not isinstance(asr_output, dict) or not asr_output.get('text'):
+		return jsonify(text = '', matches = [])
+	res = findMedia(K.download_path, asr_postprocess(asr_output['text']), lang = asr_output.get('language')) or []
+	return jsonify(text = asr_output['text'], matches = [{'file': s, 'title': filename_from_path(s)} for s in res])
 
 @app.route('/get_ASR', methods=['POST'])
 @app.route('/get_ASR/<path:cmd>', methods=['POST'])
@@ -900,10 +624,19 @@ def get_ASR(cmd=''):
 	with open(f'{K.tmp_dir}/rec.webm', 'wb') as fp:
 		fp.write(request.data)
 	asr_output, r = run_asr()
-	return asr_output['text'], r.status_code
+	return asr_output.get('text', ''), r.status_code
 
 
-# Delay system commands to allow redirect to render first
+# ---------------------------------------------------------------------------- TV screen in a browser
+
+@app.route("/splash")
+def splash():
+	return render_template("splash.html", url = K.url)
+
+
+# ---------------------------------------------------------------------------- system
+
+# Delay system commands so that the page gets its answer first
 def delayed_halt(cmd):
 	time.sleep(3)
 	K.vocal_stop()
@@ -921,79 +654,37 @@ def delayed_halt(cmd):
 		process.wait()
 		os.system("reboot")
 
-
-@app.route("/refresh")
-def refresh():
-	if (is_admin()):
-		K.get_available_songs()
-	else:
-		flash(getString(34), "is-danger")
-	return redirect(url_for("browse"))
-
-
-@app.route("/bg-process/<cmd>")
-def bg_process(cmd):
-	if cmd == 'streamer-restart':
-		K.streamer_restart()
-	elif cmd == 'streamer-stop':
-		K.streamer_stop()
-	elif cmd == 'vocal-restart':
-		K.vocal_restart()
-	elif cmd == 'vocal-stop':
-		K.vocal_stop()
-	return ''
-
-
 @app.route("/quit")
+@admin_only
 def quit():
-	if (is_admin()):
-		flash(getString(35), "is-warning")
-		threading.Thread(target = delayed_halt, args = [0]).start()
-	else:
-		flash(getString(36), "is-danger") 
-	return ''
-
+	threading.Thread(target = delayed_halt, args = [0]).start()
+	return jsonify(ok = True, message = getString2(35))
 
 @app.route("/shutdown")
+@admin_only
 def shutdown():
-	if (is_admin()):
-		flash(getString(37), "is-danger")
-		threading.Thread(target = delayed_halt, args = [1]).start()
-	else:
-		flash(getString(38), "is-danger")
-	return ''
-
+	threading.Thread(target = delayed_halt, args = [1]).start()
+	return jsonify(ok = True, message = getString2(37))
 
 @app.route("/reboot")
+@admin_only
 def reboot():
-	if (is_admin()):
-		flash(getString(39), "is-danger")
-		threading.Thread(target = delayed_halt, args = [2]).start()
-	else:
-		flash(getString(40), "is-danger")
-	return ''
-
+	threading.Thread(target = delayed_halt, args = [2]).start()
+	return jsonify(ok = True, message = getString2(39))
 
 @app.route("/update_ytdl")
+@admin_only
 def update_ytdl():
-	if (is_admin()):
-		flash(getString(32), "is-warning")
-		threading.Thread(target=lambda: K.upgrade_youtubedl()).start()
-	else:
-		flash(getString(33), "is-danger")
-	return ''
-
+	threading.Thread(target=lambda: K.upgrade_youtubedl()).start()
+	return jsonify(ok = True, message = getString2(32))
 
 @app.route("/expand_fs")
+@admin_only
 def expand_fs():
-	if (is_admin() and platform == "raspberry_pi"):
-		flash(getString(41), "is-danger")
-		threading.Thread(target = delayed_halt, args = [3]).start()
-	elif (platform != "raspberry_pi"):
-		flash(getString(42), "is-danger")
-	else:
-		flash(getString(43), "is-danger")
-	return ''
+	if get_platform() != "raspberry_pi":
+		return jsonify(ok = False, error = getString2(42)), 400
+	threading.Thread(target = delayed_halt, args = [3]).start()
+	return jsonify(ok = True, message = getString2(41))
 
 
 def get_default_dl_dir():
@@ -1208,8 +899,6 @@ if __name__ == "__main__":
 	if (args.admin_password):
 		admin_password = args.admin_password
 
-	app.jinja_env.globals.update(filename_from_path = filename_from_path)
-	app.jinja_env.globals.update(url_escape = quote)
 
 	args.tmp_dir = os.path.expanduser(args.temp or get_default_tmp_dir())
 	args.cloud = args.cloud.rstrip('/')
