@@ -229,3 +229,10 @@ Youtube-dl (yt-dlp) 版本
 撤銷
 關閉
 添加
+影片長度：
+用語音辨識來搜尋歌曲
+您正在使用的Chrome瀏覽器支援treat-insecure-origin-as-secure選項，是否將目前頁面的URL新增至此選項？
+請將'chrome://flags/#unsafely-treat-insecure-origin-as-secure'複製到剪貼簿並在新分頁中貼上並開啟。
+您需要變更Firefox瀏覽器的安全設定，允許HTTP網頁存取麥克風，是否繼續？
+請在新的頁面中開啟'about:config'，並且設定'media.getusermedia.insecure.enabled'和'media.devices.insecure.enabled'。
+無法播放「%s」（檔案可能已損毀），已跳過。

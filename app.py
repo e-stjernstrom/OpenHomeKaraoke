@@ -39,6 +39,7 @@ getString2 = lambda ii: getString1(request.client_lang, ii)
 def ws_init(sock):
 	key = sock.sock.getpeername()[0]
 	ip2websock[key] = sock
+	ip2lang[key] = request.client_lang  # used to localize notifications pushed to this client
 	while sock.connected:
 		try:
 			cmd = sock.receive()
@@ -46,6 +47,7 @@ def ws_init(sock):
 		except:
 			traceback.print_exc()
 	ip2websock.pop(key)
+	ip2lang.pop(key, None)
 
 def wscmd(client_ip, cmd):
 	if cmd.startswith('pop_from_queue '):
