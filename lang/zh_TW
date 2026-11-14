@@ -236,3 +236,4 @@ Youtube-dl (yt-dlp) 版本
 您需要變更Firefox瀏覽器的安全設定，允許HTTP網頁存取麥克風，是否繼續？
 請在新的頁面中開啟'about:config'，並且設定'media.getusermedia.insecure.enabled'和'media.devices.insecure.enabled'。
 無法播放「%s」（檔案可能已損毀），已跳過。
+背景去人聲（關閉後，已經產生的伴奏／人聲音軌仍然可以播放）

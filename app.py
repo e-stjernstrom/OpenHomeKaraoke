@@ -17,7 +17,7 @@ from constants import VERSION
 from collections import defaultdict
 from lib.get_platform import *
 from lib.vlcclient import get_default_vlc_path
-from lib.vocal_dirs import ensure_vocal_dirs
+from lib.vocal_dirs import ensure_vocal_dirs, is_split_disabled, set_split_enabled
 
 try:
 	from urllib.parse import quote, unquote
@@ -303,6 +303,18 @@ def set_save_delays(state):
 def set_vocal_mode(mode):
 	K.use_DNN_vocal = (mode.lower() == 'true')
 	K.play_vocal()
+	return ''
+
+
+@app.route("/vocal_split/<state>")
+def vocal_split(state):
+	if is_admin():
+		enabled = state.lower() == 'true'
+		set_split_enabled(K.download_path, enabled)
+		if enabled:
+			K.vocal_restart()
+		else:
+			K.vocal_stop()
 	return ''
 
 
@@ -773,6 +785,7 @@ def info():
 		vocalsplitter = get_status(vocalsplitter) + vocal_extra,
 		platform = K.platform,
 		save_delays = bool(K.save_delays),
+		vocal_split = not is_split_disabled(K.download_path),
 		admin = is_admin(),
 		admin_enabled = admin_password != None
 	)
@@ -829,6 +842,7 @@ def f_info():
 		vocalsplitter = get_status(vocalsplitter) + vocal_extra,
 		platform = K.platform,
 		save_delays = bool(K.save_delays),
+		vocal_split = not is_split_disabled(K.download_path),
 		admin = is_admin(),
 		admin_enabled = admin_password != None
 	)
@@ -879,8 +893,7 @@ def get_ASR(cmd=''):
 # Delay system commands to allow redirect to render first
 def delayed_halt(cmd):
 	time.sleep(3)
-	if K.vocal_process is not None and K.vocal_process.is_alive():
-		K.vocal_process.terminate()
+	K.vocal_stop()
 	K.queue_clear()  # stop all pending omxplayer processes
 	K.stop()
 	if cmd == 0:
@@ -1053,7 +1066,12 @@ if __name__ == "__main__":
 	)
 	parser.add_argument(
 		"-V", "--run-vocal",
-		help = "Explicitly run vocal-splitter process from the main program (by default, it only run explicitly in Windows)",
+		help = "Deprecated, kept for old scripts: the vocal splitter now starts automatically on all platforms when PyTorch is installed",
+		action = 'store_true',
+	)
+	parser.add_argument(
+		"--no-vocal",
+		help = "Do not start the background vocal splitter (existing instrumental/vocal tracks can still be played)",
 		action = 'store_true',
 	)
 	parser.add_argument(

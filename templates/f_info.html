@@ -401,6 +401,13 @@ select:-moz-focusring {
 </div>
 <p class="help">{{getString1(155)}}</p>
 
+<h4>{{getString1(239)}}
+  <label style="vertical-align:middle; margin: 5px" class="switch">
+    <input id="vocal-split" type="checkbox" {% if vocal_split %}checked{% endif %}>
+    <span class="slider round"></span>
+  </label>
+</h4>
+
 <h4 style="margin-bottom:0">{{getString1(148)}}:</h4>
 <ul class="button-group">
   <li><button id="vocal-stop" class="red button" style="width:150px">{{getString1(156)}}</button></li>
@@ -482,6 +489,12 @@ function setServerLang(val){
 function confirm_goto(msg_id, url){
   if (window.confirm(msgs[msg_id])) get_refresh(url, '/f_home');
 }
+
+$("#vocal-split").change(function(){
+  $.get("/vocal_split/" + this.checked, function( data ){
+    location.reload(true);
+  });
+});
 
 $("#use-DNN").change(function(){
   $.get("/set_vocal_mode/" + this.checked, function( data ){

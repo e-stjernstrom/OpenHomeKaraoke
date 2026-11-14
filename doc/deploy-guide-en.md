@@ -101,6 +101,35 @@ You should see `Python 3.12.something`.
    brew install --cask vlc
    ```
 
+### Steam Deck (SteamOS), Bazzite and other "immutable" systems (untested)
+
+On these systems the core of the system is read-only. `sudo apt install` doesn't exist there, and changes made with the system's own package tool may be undone by the next system update. The easiest way around this is **Distrobox**: a normal Ubuntu that runs inside your system and shares your home folder, screen and sound with it.
+
+1. **Steam Deck only:** switch to Desktop Mode (press the Steam button → Power → Switch to Desktop), then open the **Konsole** terminal.
+2. Check that Distrobox is there:
+   ```bash
+   distrobox --version
+   ```
+   Bazzite and recent SteamOS versions include it. If the command is not found, follow the "install without root" instructions at <https://distrobox.it>.
+3. Create an Ubuntu 24.04 box named `karaoke`. This downloads a few hundred MB, once:
+   ```bash
+   distrobox create --name karaoke --image ubuntu:24.04
+   ```
+4. Go into the box:
+   ```bash
+   distrobox enter karaoke
+   ```
+   The start of the terminal line changes to show you are inside. Inside the box, `sudo apt` works (it usually doesn't ask for a password).
+5. Inside the box, do the **Linux (Ubuntu)** commands above, then Steps 2 to 5 exactly as written. Your home folder is the same inside and outside the box, so the program ends up in `~/OpenHomeKaraoke` and the songs in `~/pikaraoke-songs` as usual.
+6. **Every time after that:** first run `distrobox enter karaoke`, then the commands under [Every time after the first](#every-time-after-the-first).
+
+Good to know:
+
+- **Use the VLC inside the box, not the Flatpak VLC from the app store.** The karaoke starts the `vlc` program directly and draws its video into the karaoke window. The Flatpak version runs in a sandbox, which gets in the way of both.
+- **Vocal removal uses the processor on a Steam Deck.** Its AMD graphics can't run NVIDIA's CUDA, and AMD's own alternative (ROCm) doesn't officially support this chip. Install the CPU version of PyTorch (Step 5a). Expect it to be slower than on a desktop computer.
+- **Desktop Mode works best.** Starting the karaoke from Game Mode (for example as a non-Steam game) has not been tried.
+- **Phone can't connect on Bazzite?** Bazzite's firewall is the same as Fedora's. Run the Fedora firewall commands from [If the phone can't connect](#if-the-phone-cant-connect) **outside** the box, in a normal terminal.
+
 ---
 
 ## Step 2. Download the program
@@ -229,45 +258,51 @@ pip install librosa==0.10.0 soundfile tqdm
 
 On the test machine these two steps took under a minute together.
 
-### 5b. The two result folders (created for you)
+### 5b. It starts by itself
 
-The first time you start the karaoke (Step 4), it creates two sub-folders in your song folder:
+Nothing else to set up. Start the karaoke as usual (Step 4):
+
+```bash
+python app.py -w
+```
+
+When PyTorch is installed, the vocal remover starts in the background together with the karaoke, and stops when the karaoke stops. The first time, the program also creates two sub-folders in your song folder:
 
 - `nonvocal`: the music without the singer (the one you want for karaoke).
 - `vocal`: the singer's voice only.
 
-You don't need to do anything. The vocal remover puts its results there, and the phone page's instrumental/vocal switch turns on when both folders exist.
+It goes through your songs one at a time, songs in the queue first. When a song is done, the phone page lets you switch between the original, the instrumental and the vocals.
 
-Note: once the folders exist, the vocal remover goes through **every song already in the folder**, one by one. With a big library this keeps the computer busy for a long time.
+Note: it works through **every song already in the folder**. With a big library this keeps the computer busy for a long time. It uses only half of the processor and runs at low priority, so the karaoke itself stays smooth.
 
-**To turn vocal removal off**, delete both folders. They are not created again, because the program leaves a small hidden file called `.vocal_dirs_initialized` in the song folder to remember that it already made them once. To turn it back on, create the folders again yourself (or delete that hidden file and restart).
+**How long does it take?** SPEED_EN
 
-### 5c. Run the vocal remover
+### 5c. Turning it off and on
 
-The easiest way: start the karaoke with `-V`, and it runs the vocal remover for you.
+On the phone, open the **Information** page (the gear icon). Under **Advanced Control Options** there is a switch, **Background vocal splitting**:
+
+- **Off**: the vocal remover stops and leaves your songs alone. Instrumental and vocal tracks that are already finished **can still be played**.
+- **On**: it starts again where it left off.
+
+The setting is remembered in your song folder (a small hidden file called `.vocal_split_disabled`). If you set an admin password, only the admin sees this switch.
+
+To never start the vocal remover at all, start the karaoke with `--no-vocal`:
 
 ```bash
-python app.py -w -V
+python app.py -w --no-vocal
 ```
 
-Or run it by hand in a **second** terminal (go to the folder and activate the venv there first, as in Step 3):
+**Songs it cannot process** (a damaged download, or a file that isn't really audio or video) are skipped and written down in a hidden file called `.vocal_failed.json` in the song folder. They are not tried again unless the file changes, for example when you download the song again.
+
+**What is it doing right now?** Its messages go to a log file: `/dev/shm/vocal_splitter.log` on Linux, or `vocal_splitter.log` in your temporary folder on Windows and macOS. The Info page also shows whether the vocal remover is running.
+
+You can still run it by hand in a second terminal (with the venv active), for example to watch it work. It won't run twice on the same folder.
 
 ```bash
 python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
 ```
 
-`--gpu -1` means "use the processor (CPU), not a graphics card".
-
-It goes through your songs one by one. When a song is done, the phone page lets you switch between the original, the instrumental and the vocals.
-
-**How long does it take?** On the test laptop (8-core ARM processor, no graphics card), a 40-second song took about 20 seconds. So a 4-minute song takes roughly 2 minutes. An NVIDIA card is much faster. It works in the background while you sing other songs, but it can make playback less smooth on a slow computer.
-
-> **Known problems right now** (being fixed):
-> - A damaged file, or a non-media file in the song folder, makes the vocal remover crash and start again in a loop.
-> - Song names containing a double quote `"` fail.
-> - Very long videos (about an hour) can use more than 10 GB of memory.
->
-> Until then, keep only songs in the song folder, and avoid hour-long videos.
+`--gpu -1` means "use the processor (CPU), not a graphics card". If a graphics card fails (for example, a card too old for your PyTorch version), it switches to the processor by itself.
 
 ---
 
@@ -301,7 +336,7 @@ Then activate the venv and run the `pip install flask==2.3.1 ...` command from S
 
 ## Removing everything
 
-Delete the `OpenHomeKaraoke` folder. That also removes the venv and all its add-ons. Your songs stay in `pikaraoke-songs` until you delete that folder too.
+Delete the `OpenHomeKaraoke` folder. That also removes the venv and all its add-ons. Your songs stay in `pikaraoke-songs` until you delete that folder too. If you used a Distrobox (Steam Deck, Bazzite), also remove the box with `distrobox rm karaoke`.
 
 ---
 
@@ -326,4 +361,4 @@ The file is damaged or isn't a real video or audio file. Delete it from the phon
 Update the YouTube downloader: `pip install -U yt-dlp`.
 
 **Vocal removal never finishes a song.**
-Check that the `nonvocal` folder exists in your song folder (Step 5b; if you deleted it, create it again) and that the vocal-remover terminal (5c) is running. Messages in that terminal show which song it is working on.
+Check that PyTorch is installed (Step 5a) and that the **Background vocal splitting** switch on the Info page is on (Step 5c). Then look at the log file named in Step 5c: it shows which song it is working on, or why it is not running (for example "Python package(s) not installed: torch").
