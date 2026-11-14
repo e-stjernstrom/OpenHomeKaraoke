@@ -18,6 +18,7 @@ from lib import omxclient, vlcclient
 from lib.vocal_dirs import is_split_disabled
 from lib import vocal_models as vm
 from lib import split_status
+from lib import browser_cookies
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString, getString1
@@ -510,6 +511,26 @@ class Karaoke:
 		return render
 
 	def call_yt_dlp(self, argv, get_stdout = False, progress = None):
+		"""Run yt-dlp. If it fails because the browser cookies cannot be read (e.g. the browser
+		was closed for good, the cookies file was deleted, or a permission was taken away), run it
+		again without cookies so search and non-YouTube sites keep working."""
+		cookies = self.cookies_opt
+		at = next((i for i in range(len(argv)) if cookies and argv[i:i+len(cookies)] == cookies), None)
+		error = None
+		try:
+			ret = self._call_yt_dlp(argv, get_stdout, progress)
+			failed = not ret if get_stdout else ret not in (0, None)
+		except subprocess.CalledProcessError as e:
+			ret, failed, error = None, True, e
+		reason = browser_cookies.unreadable(cookies) if failed and at is not None else ''
+		if not reason:  # no cookies used, or they are fine: the failure has another cause
+			if error is not None:
+				raise error
+			return ret
+		logging.warning(f"yt-dlp: cannot read cookies from {cookies[1]} ({reason}); retrying without them")
+		return self._call_yt_dlp(argv[:at] + argv[at+len(cookies):], get_stdout, progress)
+
+	def _call_yt_dlp(self, argv, get_stdout = False, progress = None):
 		"""Run yt-dlp. progress(fraction) is called while downloading (in-process yt-dlp only)."""
 		if progress and not self.youtubedl_path and not get_stdout:
 			import yt_dlp

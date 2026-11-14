@@ -19,6 +19,7 @@ from lib.get_platform import *
 from lib.vlcclient import get_default_vlc_path
 from lib.vocal_dirs import ensure_vocal_dirs, is_split_disabled, set_split_enabled
 from lib import vocal_models as vm
+from lib import browser_cookies
 
 try:
 	from urllib.parse import quote, unquote
@@ -719,6 +720,9 @@ def get_default_tmp_dir():
 
 def get_default_browser_cookie(platform):
 	platform = 'linux' if platform=='raspberry_pi' else platform
+	if platform == 'osx':
+		# the default browser is not detectable on macOS here (webbrowser says 'default')
+		return browser_cookies.pin_profile(browser_cookies.default_spec(platform), platform)
 	def_cookie_loc = defaultdict(lambda:defaultdict(lambda:''))
 	def_cookie_loc['linux']['firefox'] = '$HOME/.mozilla/firefox/'
 	def_cookie_loc['linux']['chrome'] = '$HOME/.config/google-chrome/'
@@ -938,7 +942,20 @@ if __name__ == "__main__":
 		if args.browser_cookies.endswith('.txt'):
 			args.cookies_opt = ['--cookies', args.browser_cookies]
 		else:
-			args.cookies_opt = ['--cookies-from-browser', args.browser_cookies]
+			args.cookies_opt = ['--cookies-from-browser', browser_cookies.pin_profile(args.browser_cookies, platform)]
+
+	# Read the cookies once now (before the karaoke window opens) and say whether YouTube is
+	# signed in. If they cannot be read, go on without them so search and other sites still work.
+	if args.cookies_opt:
+		source = args.cookies_opt[1]
+		count, signed_in, error = browser_cookies.check(args.cookies_opt)
+		if error:
+			print(f"YouTube sign-in: cannot read cookies from {source} ({error}). Continuing without them; "
+			      f"YouTube may then ask to confirm you're not a bot. {browser_cookies.HINTS.get(platform, '')}")
+			args.cookies_opt = []
+		else:
+			print(f"YouTube sign-in: {count} cookies from {source}, signed in to YouTube: "
+			      + ("yes" if signed_in else "NO (sign in to YouTube in that browser, or downloads may be refused)"))
 
 	# Handle OMX player if specified
 	if platform == "raspberry_pi" and args.use_omxplayer:

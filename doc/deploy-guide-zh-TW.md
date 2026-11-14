@@ -254,6 +254,15 @@ python app.py -w
   ```
 - **Windows**：Windows 詢問是否允許 Python 使用網路時，請允許**私人網路**。
 
+### YouTube 要求「確認你不是機器人」
+
+有些網路（公司、學校、共用 Wi-Fi）會被 YouTube 要求登入才能下載。程式會用瀏覽器裡的 YouTube 登入資料（cookie）。
+
+- 在瀏覽器登入 YouTube。Mac 上程式會自動用 **Chrome**（沒有 Chrome 才用 Firefox 或 Safari）。其他系統可以用 `-c chrome` 或 `-c firefox` 指定。
+- 啟動時畫面會顯示一行 `YouTube sign-in: ...`，`signed in to YouTube: yes` 就表示可以用了。
+- **Mac**：要讓啟動卡拉 OK 的程式（例如「終端機」）有「完整磁碟取用權限」：系統設定 → 隱私權與安全性 → 完整磁碟取用權限，打開後把終端機完全結束再重開。第一次下載時 Mac 會問能不能使用「Chrome Safe Storage」，請按「永遠允許」。
+- 也可以改用 cookies.txt 檔案（`-c 檔案路徑.txt`）。請在**無痕視窗**登入 YouTube，在 YouTube 頁面匯出，匯出後馬上關掉無痕視窗；用一般視窗匯出的檔案，下載兩三首就會失效。這個檔案等於你的登入資料，不要給別人。
+
 ---
 
 ## 第 5 步（選用）：去人聲

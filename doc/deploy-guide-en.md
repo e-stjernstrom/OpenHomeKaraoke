@@ -254,6 +254,15 @@ The computer's firewall may be blocking it.
   ```
 - **Windows**: when Windows asks whether Python may use the network, allow **private networks**.
 
+### YouTube asks to "confirm you're not a bot"
+
+On some networks (work, school, shared Wi-Fi) YouTube only allows downloads when you are signed in. The program uses your browser's YouTube sign-in (its cookies).
+
+- Sign in to YouTube in your browser. On a Mac the program uses **Chrome** by itself (Firefox or Safari if there is no Chrome). On other systems, choose one with `-c chrome` or `-c firefox`.
+- At startup it prints a line `YouTube sign-in: ...`. `signed in to YouTube: yes` means it works.
+- **Mac**: give the app you start the karaoke from (e.g. Terminal) Full Disk Access: System Settings → Privacy & Security → Full Disk Access, turn it on, then quit and reopen Terminal. On the first download the Mac asks about "Chrome Safe Storage": choose **Always Allow**.
+- You can use a cookies.txt file instead (`-c path/to/file.txt`). Sign in to YouTube in a **private window**, export on the YouTube page, then close the private window right away. A file exported from a normal window stops working after two or three songs. The file is your sign-in: don't share it.
+
 ---
 
 ## Step 5 (optional). Vocal removal
