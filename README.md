@@ -57,6 +57,8 @@ This _should_ work on Windows, Linux machines and all Raspberry Pi devices (mult
 
 ## Installation
 
+Step-by-step, plain-language guides using a Python venv (no conda): [English](doc/deploy-guide-en.md) · [台灣華語](doc/deploy-guide-zh-TW.md)
+
 ### For all OS
 
 - Install git, if you haven't already. (on Raspberry Pi: `sudo apt-get update; sudo apt-get install git`)
@@ -64,7 +66,7 @@ This _should_ work on Windows, Linux machines and all Raspberry Pi devices (mult
 - Download and install Anaconda3 (https://www.anaconda.com/products/individual), it contains Python3, pip/pip3 and common Python libraries
 - Install pip dependencies, in the conda environment, cd into the project folder and run `pip install -r requirements.txt`
 - Create song download directory `$HOME/pikaraoke-songs` (by default) or specify it on the command line.
-- Create `nonvocal` and `vocal` sub-folders inside the song download directory to enable automatic extraction of instrumental and vocal tracks in the background, e.g.,`$HOME/pikaraoke-songs/nonvocal` and `$HOME/pikaraoke-songs/vocal` by default.
+- The `nonvocal` and `vocal` sub-folders inside the song download directory (e.g. `$HOME/pikaraoke-songs/nonvocal` and `$HOME/pikaraoke-songs/vocal` by default) enable automatic extraction of instrumental and vocal tracks in the background. They are created automatically the first time a song directory is used (a hidden `.vocal_dirs_initialized` file records this). To turn vocal splitting off, delete them; they will not be created again.
 - Make sure `VLC` (https://www.videolan.org/) and `ffmpeg` (https://ffmpeg.org/download.html) are installed, and their executables are in the execution PATH environment variable.
 - For GPU-accelerated speech recognition, you need to install the cloud-side server on any CUDA-enabled GPU machine. Copy over the entire `cloud` folder from https://github.com/xuancong84/OpenSmartLight/tree/main/tools/cloud, setup conda environment correctly and run the `cloud.py`, then pass the cloud server URL as argument to `app.py`.
 - GPU-accelerated vocal splitter can run either locally or via cloud (see previous point with option `-vs`). If your local machine is powerful enough, with a fast CPU and a decent NVidia GPU with >=8GB GPU memory, you can host the cloud on the same local machine.
@@ -209,7 +211,7 @@ Make sure you are connected to the same network/wifi. You can then enter the sho
 
 ### Both vocal/nonvocal options are greyed out permanently, cannot switch to vocal/instrumental mode
 
-The vocal/nonvocal play modes are only activated when both `vocal` and `nonvocal` folders exist inside the songs folder. So you need to manually create a `vocal` and `nonvocal` subfolders inside your songs directory.
+The vocal/nonvocal play modes are only activated when both `vocal` and `nonvocal` folders exist inside the songs folder. They are created automatically the first time a songs folder is used. If you deleted them (which turns vocal splitting off), create the `vocal` and `nonvocal` subfolders again manually.
 
 ### I'm not hearing audio out of the headphone jack
 

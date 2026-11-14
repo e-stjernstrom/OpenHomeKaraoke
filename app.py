@@ -17,6 +17,7 @@ from constants import VERSION
 from collections import defaultdict
 from lib.get_platform import *
 from lib.vlcclient import get_default_vlc_path
+from lib.vocal_dirs import ensure_vocal_dirs
 
 try:
 	from urllib.parse import quote, unquote
@@ -1227,6 +1228,7 @@ if __name__ == "__main__":
 	if not os.path.exists(args.dl_path):
 		print(getString(47) + args.dl_path)
 		os.makedirs(args.dl_path)
+	ensure_vocal_dirs(args.dl_path)
 
 	# determine whether to save/load delays
 	args.dft_delays_file = args.dl_path+'.delays'

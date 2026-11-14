@@ -11,6 +11,7 @@ from tqdm import tqdm
 from lib import dataset
 from lib import nets
 from lib import spec_utils
+from lib.vocal_dirs import ensure_vocal_dirs
 import librosa
 
 
@@ -227,6 +228,7 @@ def main(argv):
 
 	# set song_path global variable from local server
 	get_next_file(device)
+	ensure_vocal_dirs(song_path)
 
 	# Use RAMDISK for large temporary .wav files for speed up if available
 	RAMDIR = args.ramdir if os.path.isdir(args.ramdir) else song_path
