@@ -192,7 +192,7 @@ A dal felkerült a sorba!
 Nem sikerült sorba állítani a dalt!
 Rendszerinformációk és beállítások
 Hangerő normalizálása
-A különböző dalok hangereje gyakran eltérő. A hangerő normalizálásának engedélyezése először az <i>ffmpeg</i> programot futtatja, hogy kiszámítsa egy dal globális hangerejét, és automatikusan beállítja a lejátszó hangerejét, hogy minden dal egyformán hangosan szóljon.
+A különböző dalok hangereje gyakran eltérő. A hangerő normalizálásának engedélyezése először az ffmpeg programot futtatja, hogy kiszámítsa egy dal globális hangerejét, és automatikusan beállítja a lejátszó hangerejét, hogy minden dal egyformán hangosan szóljon.
 Dalkönyvtár letöltési útvonala
 A dalok teljes száma
 Felirat megjelenítése/elrejtése

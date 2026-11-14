@@ -192,7 +192,7 @@ Nummer toegevoegd aan de wachtrij!
 Kan het nummer niet in de wachtrij plaatsen!
 Systeeminfo en instellingen
 Volumenormalisatie
-Verschillende nummers hebben vaak een verschillend volume. Als u volumenormalisatie inschakelt, wordt eerst <i>ffmpeg</i> uitgevoerd om het globale volume van een nummer te berekenen en het spelervolume automatisch aan te passen, zodat elk nummer even luid klinkt.
+Verschillende nummers hebben vaak een verschillend volume. Als u volumenormalisatie inschakelt, wordt eerst ffmpeg uitgevoerd om het globale volume van een nummer te berekenen en het spelervolume automatisch aan te passen, zodat elk nummer even luid klinkt.
 Downloadpad voor de songbibliotheek
 Totaal aantal nummers
 Ondertitel tonen/verbergen

@@ -192,7 +192,7 @@ Song added to the queue!
 Failed to queue the song!
 System Info & Settings
 Volume Normalization
-Different songs often have different volume. Enabling volume normalization will first run <i>ffmpeg</i> to compute the global volume of a song and automatically adjust player volume so that every song sounds equally loud.
+Different songs often have different volume. Enabling volume normalization will first run ffmpeg to compute the global volume of a song and automatically adjust player volume so that every song sounds equally loud.
 Song library download path
 Total number of songs
 Show/Hide Subtitle

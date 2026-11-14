@@ -192,7 +192,7 @@ Sang tilføjet til køen!
 Det lykkedes ikke at sætte sangen i kø!
 Systeminfo og indstillinger
 Volumennormalisering
-Forskellige sange har ofte forskellig lydstyrke. Aktivering af volumennormalisering vil først køre <i>ffmpeg</i> for at beregne den globale lydstyrke for en sang og automatisk justere afspillerens lydstyrke, så hver sang lyder lige højt.
+Forskellige sange har ofte forskellig lydstyrke. Aktivering af volumennormalisering vil først køre ffmpeg for at beregne den globale lydstyrke for en sang og automatisk justere afspillerens lydstyrke, så hver sang lyder lige højt.
 Sti til download af sangbibliotek
 Samlet antal sange
 Vis/skjul undertekster

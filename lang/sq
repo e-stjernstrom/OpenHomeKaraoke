@@ -192,7 +192,7 @@ Kënga u shtua në radhë!
 Dështoi në radhën e këngës!
 Informacioni dhe cilësimet e sistemit
 Normalizimi i volumit
-Këngët e ndryshme shpesh kanë volum të ndryshëm. Aktivizimi i normalizimit të volumit fillimisht do të ekzekutojë <i>ffmpeg</i> për të llogaritur volumin global të një kënge dhe për të rregulluar automatikisht volumin e luajtësit në mënyrë që çdo këngë të tingëllojë njësoj e lartë.
+Këngët e ndryshme shpesh kanë volum të ndryshëm. Aktivizimi i normalizimit të volumit fillimisht do të ekzekutojë ffmpeg për të llogaritur volumin global të një kënge dhe për të rregulluar automatikisht volumin e luajtësit në mënyrë që çdo këngë të tingëllojë njësoj e lartë.
 Rruga e shkarkimit të bibliotekës së këngëve
 Numri total i këngëve
 Shfaq/Fshihe titrat

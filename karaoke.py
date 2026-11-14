@@ -48,7 +48,27 @@ def flash(message: str, category: str = "message", client_ip = ''):
 	# message often contains a song title; json.dumps makes it a safe JavaScript string literal
 	ws_send(client_ip or request.remote_addr, f'showNotification({json.dumps(str(message))}, {json.dumps(category)})')
 
+def unwrap_urllib3_percent_re():
+	"""yt-dlp wraps urllib3's _PERCENT_RE in a Urllib3PercentREOverride object when it is imported.
+	Importing it again (as upgrade_youtubedl does after upgrading yt-dlp in place) wraps the wrapper,
+	and the outer wrapper cannot find .sub() on the inner one. From then on every request to a host
+	name fails with "'Urllib3PercentREOverride' object has no attribute 'sub'", including the HTTP
+	requests that control VLC on localhost, so every song is skipped. Undo the wrapping first."""
+	try:
+		import urllib3.util.url as u
+		for attr in ('_PERCENT_RE', 'PERCENT_RE'):
+			r = getattr(u, attr, None)
+			while r is not None and type(r).__name__ == 'Urllib3PercentREOverride':
+				r = r.re
+			if r is not None:
+				setattr(u, attr, r)
+	except Exception:
+		pass
+
+
 def cleanse_modules(name):
+	if name == 'yt_dlp':
+		unwrap_urllib3_percent_re()
 	try:
 		for module_name in sorted(sys.modules.keys()):
 			if module_name.startswith(name):
@@ -809,7 +829,7 @@ class Karaoke:
 
 	def skip(self):
 		if self.is_file_playing():
-			logging.info("Skipping: " + self.now_playing)
+			logging.info(f"Skipping: {self.now_playing}")
 			if self.use_vlc:
 				self.vlcclient.stop()
 			else:
@@ -904,7 +924,7 @@ class Karaoke:
 
 	def pause(self):
 		if self.is_file_playing():
-			logging.info("Toggling pause: " + self.now_playing)
+			logging.info(f"Toggling pause: {self.now_playing}")
 			if self.use_vlc:
 				if self.vlcclient.is_playing():
 					self.vlcclient.pause()

@@ -192,7 +192,7 @@ Skladba přidána do fronty!
 Skladbu se nepodařilo zařadit do fronty!
 Systémové informace a nastavení
 Normalizace hlasitosti
-Různé skladby mají často různou hlasitost. Po povolení normalizace hlasitosti se nejprve spustí <i>ffmpeg</i>, která vypočítá celkovou hlasitost skladby a automaticky upraví hlasitost přehrávače tak, aby každá skladba zněla stejně hlasitě.
+Různé skladby mají často různou hlasitost. Po povolení normalizace hlasitosti se nejprve spustí ffmpeg, která vypočítá celkovou hlasitost skladby a automaticky upraví hlasitost přehrávače tak, aby každá skladba zněla stejně hlasitě.
 Cesta ke stažení knihovny písní
 Celkový počet skladeb
 Zobrazit/skrýt titulky

@@ -192,7 +192,7 @@ Låten har lagts till i kön!
 Det gick inte att köa låten!
 Systeminformation och inställningar
 Volymnormalisering
-Olika låtar har ofta olika volym. Aktivering av volymnormalisering kommer först att köra <i>ffmpeg</i> för att beräkna den globala volymen för en låt och automatiskt justera spelarvolymen så att varje låt låter lika högt.
+Olika låtar har ofta olika volym. Aktivering av volymnormalisering kommer först att köra ffmpeg för att beräkna den globala volymen för en låt och automatiskt justera spelarvolymen så att varje låt låter lika högt.
 Sökväg för nedladdning av låtbibliotek
 Totalt antal låtar
 Visa/dölj undertext

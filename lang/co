@@ -192,7 +192,7 @@ Canzona aghjunta à a fila !
 Impossible di mette in fila a canzone!
 Info di sistema è paràmetri
 Normalizazione di u voluminu
-Diversi canti spessu anu un volumu diversu. L'attivazione di a normalizazione di u voluminu prima eseguirà <i>ffmpeg</i> per calculà u voluminu globale di una canzone è aghjustà automaticamente u voluminu di u lettore in modu chì ogni canzone sona ugualmente forte.
+Diversi canti spessu anu un volumu diversu. L'attivazione di a normalizazione di u voluminu prima eseguirà ffmpeg per calculà u voluminu globale di una canzone è aghjustà automaticamente u voluminu di u lettore in modu chì ogni canzone sona ugualmente forte.
 Percorsu di scaricamentu di a biblioteca di canzoni
 U numeru tutale di canzoni
 Mostra / Oculte u Subtitle
