@@ -129,8 +129,12 @@ export default function LibraryPage() {
                       </Stack>
                     }
                   >
-                    <ListItemButton disabled={s.queued} onClick={() => enqueue(s)} sx={{ pr: config.admin ? 12 : 7 }}>
-                      <ListItemText primary={s.title} slotProps={{ primary: { sx: { wordBreak: 'break-word' } } }} />
+                    <ListItemButton onClick={() => !s.queued && enqueue(s)} sx={{ pr: config.admin ? 12 : 7 }}>
+                      <ListItemText
+                        primary={s.title}
+                        secondary={s.queued ? t(S.alreadyQueued) : undefined}
+                        slotProps={{ primary: { sx: { wordBreak: 'break-word' } } }}
+                      />
                     </ListItemButton>
                   </ListItem>
                 </div>

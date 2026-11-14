@@ -18,6 +18,7 @@ import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
 import Alert from '@mui/material/Alert';
+import Avatar from '@mui/material/Avatar';
 import { useColorScheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import HomeRounded from '@mui/icons-material/HomeRounded';
@@ -122,7 +123,13 @@ export default function App() {
               aria-haspopup="menu"
               onClick={(e) => setMenuEl(e.currentTarget)}
             >
-              <AccountCircleRounded />
+              {user ? (
+                <Avatar sx={{ width: 30, height: 30, fontSize: 15, bgcolor: 'secondary.main', color: 'secondary.contrastText' }}>
+                  {[...user.trim()][0]?.toUpperCase()}
+                </Avatar>
+              ) : (
+                <AccountCircleRounded />
+              )}
             </IconButton>
           </Tooltip>
         </Toolbar>

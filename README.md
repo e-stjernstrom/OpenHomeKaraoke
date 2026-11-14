@@ -193,12 +193,13 @@ One page for phones and computers (React + Material UI), in dark or light, with 
 ### Queue
 
 - Drag the handle to reorder, or use ⋮ (move to top, up, down, remove with undo); admin only when an admin password is set
+- Everyone can take back their own songs
 - Add 3 random songs, clear the queue
 
 ### Search
 
-- Your library first, as you type; then search YouTube and download (optionally added to the queue)
-- Paste a YouTube link to download it directly; voice search when a speech server is set up (`--cloud`, HTTPS)
+- Your library first, as you type; then search YouTube; one tap downloads a result and adds it to the queue (⋮ for subtitles and high quality)
+- Paste a link (YouTube, or another site yt-dlp supports, e.g. Bilibili) to download it, with progress; some sites refuse downloads; voice search when a speech server is set up (`--cloud`, HTTPS)
 
 ### Library
 

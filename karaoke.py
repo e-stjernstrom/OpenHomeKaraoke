@@ -33,9 +33,10 @@ STR_CANNOT_PLAY = 238  # 'Cannot play "%s" (the file may be damaged). Skipped.'
 def ws_send(ip, event):
 	"""Send one event to the web page of this client. Events are JSON objects with a "type" key
 	(see frontend/src/api.ts); the page never executes anything it receives."""
-	if ip in ip2websock:
+	# one address can have several pages open (tabs, or a reload whose old socket is still closing)
+	for sock in list(ip2websock.get(ip, ())):
 		try:
-			ip2websock[ip].send(json.dumps(event))
+			sock.send(json.dumps(event))
 		except Exception as e:
 			logging.debug(f"Could not send to {ip}: {e}")
 
@@ -469,7 +470,24 @@ class Karaoke:
 			break
 		return render
 
-	def call_yt_dlp(self, argv, get_stdout = False):
+	def call_yt_dlp(self, argv, get_stdout = False, progress = None):
+		"""Run yt-dlp. progress(fraction) is called while downloading (in-process yt-dlp only)."""
+		if progress and not self.youtubedl_path and not get_stdout:
+			import yt_dlp
+			try:
+				po = yt_dlp.parse_options(argv)
+				def hook(d):
+					if d.get('status') == 'downloading':
+						total = d.get('total_bytes') or d.get('total_bytes_estimate')
+						if total:
+							progress(min(1.0, d.get('downloaded_bytes', 0) / total))
+				with yt_dlp.YoutubeDL(dict(po.ydl_opts, progress_hooks = [hook])) as ydl:
+					return ydl.download(po.urls)
+			except SystemExit as e:
+				return e.code
+			except Exception as e:
+				logging.error(f'yt-dlp: {e}')
+				return 1
 		if self.youtubedl_path:
 			if get_stdout:
 				return subprocess.check_output([self.youtubedl_path]+argv).decode("utf-8")
@@ -540,19 +558,25 @@ class Karaoke:
 		logging.info("Downloading video: " + song_url)
 		getString2 = lambda ii: os.langs.get(client_lang, os.langs['en_US'])[ii]
 		self.downloading_songs[song_url] = 1
+		last = [0.0]
+		def progress(fraction):
+			# at most once a second, to the phone that asked for it
+			if time.time() - last[0] >= 1:
+				last[0] = time.time()
+				ws_send(client_ip, {'type': 'download', 'url': song_url, 'state': 1, 'progress': round(fraction, 3)})
 		dl_path = "%(title)s---%(id)s.%(ext)s"
 		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'mp4+m4a']
 		opt_sub = ['--sub-langs', 'all', '--embed-subs'] if include_subtitles else []
-		cmd = ['--fixup', 'force', '--socket-timeout', '3', '-R', 'infinite', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + opt_quality +\
+		cmd = ['--fixup', 'force', '--socket-timeout', '15', '-R', '10', '--fragment-retries', '10', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + opt_quality +\
 			["-o", self.download_path+'tmp/'+dl_path] + opt_sub + [song_url]
 		logging.info("Youtube-dl command: " + " ".join(cmd))
-		rc = self.call_yt_dlp(cmd)
+		rc = self.call_yt_dlp(cmd, progress = progress)
 		if rc != 0:
 			logging.error("Error code while downloading, retrying without format options ...")
-			cmd = ['--fixup', 'force', '--socket-timeout', '3', '-R', 'infinite', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + \
+			cmd = ['--fixup', 'force', '--socket-timeout', '15', '-R', '10', '--fragment-retries', '10', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + \
 				["-o", self.download_path + 'tmp/' + dl_path] + opt_sub + [song_url]
 			logging.debug("Youtube-dl command: " + " ".join(cmd))
-			rc = self.call_yt_dlp(cmd)
+			rc = self.call_yt_dlp(cmd, progress = progress)
 		if rc == 0:
 			logging.debug("Song successfully downloaded: " + song_url)
 			self.downloading_songs[song_url] = 0

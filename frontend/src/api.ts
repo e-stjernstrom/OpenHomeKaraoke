@@ -166,7 +166,7 @@ export type ServerEvent =
   | { type: 'seek'; time: number }
   | { type: 'queue'; data: QueueItem[] }
   | { type: 'notify'; message: string; category?: string; timeout?: number }
-  | { type: 'download'; url: string; state: number | string | null };
+  | { type: 'download'; url: string; state: number | string | null; progress?: number };
 
 type Listener = (e: ServerEvent) => void;
 type ConnListener = (connected: boolean) => void;

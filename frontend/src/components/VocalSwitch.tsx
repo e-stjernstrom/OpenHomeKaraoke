@@ -67,6 +67,11 @@ export default function VocalSwitch({ status }: { status: Status }) {
 export function SplitLine({ split, hasOlder, admin, dense }: { split: SplitInfo | null; hasOlder?: boolean; admin?: boolean; dense?: boolean }) {
   const { t, refreshStatus } = useApp();
   if (!split) return null;
+  // the queue shows only what concerns each song; the machine-wide state is in Settings
+  if (dense && (split.state === 'off' || split.state === 'unavailable' || split.state === 'stopped')) return null;
+  // an older model's result can be played: say so instead of "not available"
+  if (hasOlder && split.state !== 'done' && split.state !== 'processing' && split.state !== 'queued')
+    split = { ...split, state: 'done', model: '' };
   const model = modelName(split.model);
   const act = (url: string) => () => getText(url).finally(() => setTimeout(refreshStatus, 800));
   let icon = <ScheduleRounded fontSize="inherit" />;
@@ -76,7 +81,7 @@ export function SplitLine({ split, hasOlder, admin, dense }: { split: SplitInfo 
   switch (split.state) {
     case 'done':
       icon = <CheckCircleOutlineRounded fontSize="inherit" />;
-      text = t(S.splitDone, model);
+      text = dense || !model ? t(S.splitReadyShort) : t(S.splitDone, model);
       break;
     case 'processing':
       icon = <HourglassTopRounded fontSize="inherit" />;

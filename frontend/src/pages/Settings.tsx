@@ -71,12 +71,22 @@ function Section({ title, children, action }: { title: string; children: ReactNo
   );
 }
 
-function Toggle({ label, help, checked, onChange }: { label: string; help?: string; checked: boolean; onChange: (b: boolean) => void }) {
+function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (b: boolean) => void }) {
   return (
-    <Stack direction="row" sx={{ alignItems: 'center' }}>
-      <FormControlLabel sx={{ flex: 1, mr: 0 }} control={<Switch checked={checked} onChange={(e) => onChange(e.target.checked)} />} label={label} />
-      {help && <HelpButton title={label} text={help} />}
-    </Stack>
+    <FormControlLabel
+      sx={{ alignItems: 'flex-start', mx: 0, my: 0.5, display: 'flex' }}
+      control={<Switch checked={checked} onChange={(e) => onChange(e.target.checked)} />}
+      label={
+        <Box sx={{ pt: 1 }}>
+          <Typography variant="body2">{label}</Typography>
+          {hint && (
+            <Typography variant="caption" color="text.secondary">
+              {hint}
+            </Typography>
+          )}
+        </Box>
+      }
+    />
   );
 }
 
@@ -132,7 +142,10 @@ function AdminCard() {
       notify({ message: t(S.logOut) });
     });
   return (
-    <Section title={t(S.administrator)} action={<HelpButton title={t(S.administrator)} text={t(S.helpAdmin)} />}>
+    <Section title={t(S.administrator)}>
+      <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1.5, mt: -1 }}>
+        {t(S.helpAdmin)}
+      </Typography>
       {config.admin ? (
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Chip color="secondary" icon={<LockOpenRounded />} label={t(S.loggedInAsAdmin)} />
@@ -201,17 +214,26 @@ function VocalCard({ s, reload }: { s: Settings; reload: () => void }) {
         <Typography variant="subtitle2" sx={{ flex: 1 }}>
           {t(S.model)}
         </Typography>
-        <HelpButton title={t(S.model)} text={[t(S.helpModel1), t(S.helpModel2), t(S.helpModel3)].join('\n\n')} />
+        <HelpButton title={t(S.model)} text={t(S.helpModel2)} />
       </Stack>
+      <Typography variant="caption" color="text.secondary" component="p">
+        {t(S.helpModel1)}
+      </Typography>
       <RadioGroup value={s.vocal_model ?? ''} onChange={(e) => run('/set_vocal_model/' + e.target.value)}>
         {(s.models ?? []).map((m) => (
           <FormControlLabel
             key={m.id}
             value={m.id}
             control={<Radio color="secondary" />}
+            disabled={unavailable}
             label={
               <Box sx={{ py: 0.5 }}>
                 <Typography variant="body2">{MODEL_TEXT[m.id] ? t(MODEL_TEXT[m.id]) : m.id}</Typography>
+                {m.id === 'LR' && (
+                  <Typography variant="caption" color="text.secondary">
+                    {t(S.helpModel3)}
+                  </Typography>
+                )}
                 {m.status === 'missing' && (
                   <Typography variant="caption" color="text.secondary">
                     {t(S.modelMissing)}
@@ -243,13 +265,13 @@ function PlaybackCard({ s, reload }: { s: Settings; reload: () => void }) {
     <Section title={t(S.playback)}>
       <Toggle
         label={t(S.volumeNormalization)}
-        help={t(S.helpVolumeNormalization)}
+        hint={t(S.normVolHint)}
         checked={!!s.norm_vol}
         onChange={(b) => set('/norm_vol/' + b)}
       />
       <Toggle
         label={t(S.savePlaySettings)}
-        help={t(S.helpSavePlaySettings)}
+        hint={t(S.saveDelaysHint)}
         checked={!!s.save_delays}
         onChange={(b) => set('/save_delays/' + b)}
       />
@@ -260,7 +282,10 @@ function PlaybackCard({ s, reload }: { s: Settings; reload: () => void }) {
 function ServerLanguageCard({ s, reload }: { s: Settings; reload: () => void }) {
   const { t, config } = useApp();
   return (
-    <Section title={t(S.tvLanguage)} action={<HelpButton title={t(S.tvLanguage)} text={t(S.helpServerLang)} />}>
+    <Section title={t(S.tvLanguage)}>
+      <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1.5, mt: -1 }}>
+        {t(S.tvLangHint)}
+      </Typography>
       <TextField
         select
         fullWidth
@@ -295,8 +320,10 @@ function LibraryCard({ s, reload }: { s: Settings; reload: () => void }) {
         <Button startIcon={<RefreshRounded />} color="secondary" disabled={busy} onClick={rescan}>
           {t(S.rescanLibrary)}
         </Button>
-        <HelpButton title={t(S.rescanLibrary)} text={t(S.helpRescan)} />
       </Stack>
+      <Typography variant="caption" color="text.secondary" component="p">
+        {t(S.rescanHint)}
+      </Typography>
     </Section>
   );
 }

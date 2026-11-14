@@ -10,6 +10,7 @@ from flask import *
 from flask.logging import logging
 from pydub import AudioSegment as AudSeg
 from flask_sock import Sock
+from simple_websocket import ConnectionClosed
 
 from karaoke import *
 from constants import VERSION
@@ -50,16 +51,25 @@ S_ADMIN_ONLY = 249  # 'Only the administrator can do this.'
 @sock.route('/ws_init')
 def ws_init(sock):
 	key = sock.sock.getpeername()[0]
-	ip2websock[key] = sock
+	ip2websock.setdefault(key, []).append(sock)
 	ip2lang[key] = request.client_lang  # used to localize notifications pushed to this client
-	while sock.connected:
-		try:
-			cmd = sock.receive()
-			wscmd(key, cmd)
-		except:
-			traceback.print_exc()
-	ip2websock.pop(key, None)
-	ip2lang.pop(key, None)
+	try:
+		while sock.connected:
+			try:
+				cmd = sock.receive()
+				wscmd(key, cmd)
+			except ConnectionClosed:
+				break
+			except Exception:
+				traceback.print_exc()
+	finally:
+		# remove only this socket: a newer page from the same address may already be connected
+		socks = ip2websock.get(key, [])
+		if sock in socks:
+			socks.remove(sock)
+		if not socks:
+			ip2websock.pop(key, None)
+			ip2lang.pop(key, None)
 
 def wscmd(client_ip, cmd):
 	# kept for clients of the old page that are still open
@@ -434,11 +444,21 @@ def add_random():
 	rc = K.queue_add_random(amount)
 	return jsonify(ok = bool(rc), message = (getString2(4) % amount) if rc else getString2(5))
 
+def own_queue_song(song, user):
+	"""Whether `song` is in the queue and was added by `user` (people may take back their own songs)."""
+	return bool(user) and any(q['file'] == song and q['user'] == user for q in K.queue)
+
 @app.route("/queue/edit", methods = ["GET", "POST"])
-@admin_only
 def queue_edit():
 	d = request.values.to_dict() | (request.get_json(silent = True) or {})
 	action = d.get("action", "")
+	if not is_admin():
+		# without the admin password: only remove your own song, or undo that
+		song, user = unquote(d.get("song", "")), d.get('user', '')
+		allowed = (action == 'delete' and own_queue_song(song, user)) or \
+		          (action == 'insert' and bool(user) and user != 'Random')
+		if not allowed:
+			return jsonify(ok = False, error = getString2(S_ADMIN_ONLY)), 403
 	if action == "clear":
 		K.queue_clear()
 		return jsonify(ok = True, message = getString2(6))
@@ -536,6 +556,9 @@ def download():
 	                        {'enqueue', 'include_subtitles', 'high_quality'})
 	if not dct.get('song_url'):
 		return jsonify(ok = False), 400
+	if K.downloading_songs.get(dct['song_url']) == 1:
+		# already being downloaded (e.g. tapped twice): do not start a second copy
+		return jsonify(ok = True, busy = True, message = getString2(285))
 	# download in the background since this can take a few minutes
 	t = threading.Thread(target = K.download_video, kwargs = dct|{'client_ip': request.remote_addr, 'client_lang': request.client_lang})
 	t.daemon = True
@@ -544,8 +567,9 @@ def download():
 
 @app.route("/check_download", methods = ["POST", "GET"])
 def check_download():
-	ret = K.downloading_songs.get(request.values.get('url', None), 1)
-	return str(ret)
+	# 1 downloading, 0 / '00' done, -1 / '01' failed, '' never asked for
+	ret = K.downloading_songs.get(request.values.get('url', None), '')
+	return json.dumps(ret)
 
 
 # ---------------------------------------------------------------------------- settings page

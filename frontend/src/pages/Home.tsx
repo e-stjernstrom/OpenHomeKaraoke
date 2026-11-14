@@ -36,7 +36,7 @@ import { getText, hhmmss, seg, type Status } from '../api';
 import { useApp } from '../state';
 import { S } from '../strings';
 import VocalSwitch from '../components/VocalSwitch';
-import { HelpButton, useConfirm } from '../components/Dialogs';
+import { useConfirm } from '../components/Dialogs';
 
 export default function HomePage() {
   const { status, t, go } = useApp();
@@ -247,13 +247,20 @@ function PlayerControls({ status }: { status: Status }) {
           <>
             <Divider sx={{ my: 2 }} />
             {/* key */}
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minHeight: 32 }}>
               <Typography variant="subtitle2" sx={{ flex: 1 }}>
                 {t(S.key)}
               </Typography>
-              <HelpButton title={t(S.key)} text={t(S.helpSemitones)} />
+              {key !== 0 && (
+                <Button size="small" color="secondary" onClick={() => changeKey(0)}>
+                  {t(S.originalKey)}
+                </Button>
+              )}
             </Stack>
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" component="p">
+              {t(S.keyHint)}
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 1 }}>
               <IconButton aria-label="−1" onClick={() => changeKey(key - 1)} disabled={key <= -12} sx={{ border: 1, borderColor: 'divider' }}>
                 <RemoveRounded />
               </IconButton>
@@ -264,33 +271,12 @@ function PlayerControls({ status }: { status: Status }) {
                 <AddRounded />
               </IconButton>
             </Stack>
-            <Box sx={{ textAlign: 'center', minHeight: 36 }}>
-              {key !== 0 && (
-                <Button size="small" color="secondary" onClick={() => changeKey(0)}>
-                  {t(S.originalKey)}
-                </Button>
-              )}
-            </Box>
 
             {/* speed */}
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 1 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 2.5, minHeight: 32 }}>
               <Typography variant="subtitle2" sx={{ flex: 1 }}>
                 {t(S.speed)}
               </Typography>
-              <Typography variant="body2">{speed.toFixed(2)}×</Typography>
-              <HelpButton title={t(S.speed)} text={t(S.helpSpeed)} />
-            </Stack>
-            <Slider
-              aria-label={t(S.speed)}
-              min={0.8}
-              max={1.2}
-              step={0.01}
-              marks={[{ value: 1 }]}
-              value={speed}
-              onChange={(_, v) => setSpeed(v as number)}
-              onChangeCommitted={(_, v) => call('/play_speed/' + v)}
-            />
-            <Box sx={{ textAlign: 'center', minHeight: 36 }}>
               {Math.abs(speed - 1) > 0.001 && (
                 <Button
                   size="small"
@@ -303,7 +289,20 @@ function PlayerControls({ status }: { status: Status }) {
                   {t(S.normalSpeed)}
                 </Button>
               )}
-            </Box>
+              <Typography variant="body2" sx={{ minWidth: 44, textAlign: 'end' }}>
+                {speed.toFixed(2)}×
+              </Typography>
+            </Stack>
+            <Slider
+              aria-label={t(S.speed)}
+              min={0.8}
+              max={1.2}
+              step={0.01}
+              marks={[{ value: 1 }]}
+              value={speed}
+              onChange={(_, v) => setSpeed(v as number)}
+              onChangeCommitted={(_, v) => call('/play_speed/' + v)}
+            />
           </>
         )}
       </CardContent>
@@ -322,10 +321,12 @@ function FineTune({ status }: { status: Status }) {
       <AccordionSummary expandIcon={<ExpandMoreRounded />}>
         <Typography variant="subtitle2">{t(S.fineTune)}</Typography>
       </AccordionSummary>
-      <AccordionDetails>
+      <AccordionDetails sx={{ pt: 0 }}>
+        <Typography variant="caption" color="text.secondary" component="p">
+          {t(S.fineTuneHint)}
+        </Typography>
         <Stepper
           label={t(S.audioDelay)}
-          help={t(S.helpAudioDelay)}
           value={status.audio_delay}
           digits={2}
           url="/audio_delay/"
@@ -342,7 +343,6 @@ function FineTune({ status }: { status: Status }) {
             />
             <Stepper
               label={t(S.subtitleDelay)}
-              help={t(S.helpSubtitleDelay)}
               value={status.subtitle_delay ?? 0}
               digits={1}
               url="/subtitle_delay/"
@@ -357,14 +357,12 @@ function FineTune({ status }: { status: Status }) {
 
 function Stepper({
   label,
-  help,
   value,
   digits,
   url,
   labels,
 }: {
   label: string;
-  help: string;
   value: number | null | undefined;
   digits: number;
   url: string;
@@ -380,12 +378,7 @@ function Stepper({
     });
   return (
     <Box sx={{ mt: 1 }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-        <Typography variant="body2" sx={{ flex: 1 }}>
-          {label}
-        </Typography>
-        <HelpButton title={label} text={help} />
-      </Stack>
+      <Typography variant="body2">{label}</Typography>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <IconButton aria-label={t(labels[0] as never)} onClick={() => send('-')} sx={{ border: 1, borderColor: 'divider' }}>
           <RemoveRounded />

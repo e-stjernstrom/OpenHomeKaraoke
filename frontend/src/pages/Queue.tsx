@@ -12,7 +12,6 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import Divider from '@mui/material/Divider';
-import Chip from '@mui/material/Chip';
 import ShuffleRounded from '@mui/icons-material/ShuffleRounded';
 import ClearAllRounded from '@mui/icons-material/ClearAllRounded';
 import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
@@ -43,7 +42,7 @@ import { SplitLine } from '../components/VocalSwitch';
 import { useConfirm } from '../components/Dialogs';
 
 export default function QueuePage() {
-  const { t, queue, config, notify, go, refreshQueue } = useApp();
+  const { t, queue, config, notify, go, refreshQueue, user } = useApp();
   const confirm = useConfirm();
   const admin = config.admin;
   // local order while a drag is being sent, so the row does not jump back
@@ -56,7 +55,7 @@ export default function QueuePage() {
   const edit = (body: Record<string, unknown>) => postJson<OkResponse>('/queue/edit', body).catch(fail).finally(refreshQueue);
 
   const remove = (item: QueueItem, index: number) => {
-    edit({ action: 'delete', song: item.file });
+    edit({ action: 'delete', song: item.file, user });
     notify({
       message: t(S.removed, item.title),
       action: { label: t(S.undo), onClick: () => edit({ action: 'insert', song: item.file, index, user: item.user }) },
@@ -79,6 +78,8 @@ export default function QueuePage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+  const title = (id: string | number) => items.find((i) => i.file === id)?.title ?? '';
+  const pos = (id: string | number) => items.findIndex((i) => i.file === id) + 1;
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     const from = items.findIndex((i) => i.file === active.id);
@@ -90,17 +91,11 @@ export default function QueuePage() {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+      <Box>
         <Button variant="outlined" color="secondary" startIcon={<ShuffleRounded />} onClick={addRandom}>
           {t(S.addRandom)}
         </Button>
-        <Box sx={{ flex: 1 }} />
-        {admin && items.length > 0 && (
-          <Button color="error" startIcon={<ClearAllRounded />} onClick={clear}>
-            {t(S.clearAll)}
-          </Button>
-        )}
-      </Stack>
+      </Box>
 
       {items.length === 0 ? (
         <Card>
@@ -116,7 +111,21 @@ export default function QueuePage() {
         </Card>
       ) : (
         <Card>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragEnd={onDragEnd}
+            accessibility={{
+              // read song titles and positions, not file paths
+              announcements: {
+                onDragStart: ({ active }) => t(S.dndPicked, title(active.id)),
+                onDragOver: ({ active, over }) => (over ? t(S.dndMoved, title(active.id), pos(over.id)) : undefined),
+                onDragEnd: ({ active, over }) => (over ? t(S.dndMoved, title(active.id), pos(over.id)) : t(S.dndCancelled)),
+                onDragCancel: () => t(S.dndCancelled),
+              },
+            }}
+          >
             <SortableContext items={items.map((i) => i.file)} strategy={verticalListSortingStrategy}>
               <List disablePadding>
                 {items.map((item, i) => (
@@ -133,6 +142,13 @@ export default function QueuePage() {
             </SortableContext>
           </DndContext>
         </Card>
+      )}
+      {admin && items.length > 0 && (
+        <Box sx={{ textAlign: 'end' }}>
+          <Button color="error" startIcon={<ClearAllRounded />} onClick={clear}>
+            {t(S.clearAll)}
+          </Button>
+        </Box>
       )}
     </Stack>
   );
@@ -184,6 +200,11 @@ function Row({
             <IconButton edge="end" aria-label={t(S.more)} onClick={(e) => setMenuEl(e.currentTarget)}>
               <MoreVertRounded />
             </IconButton>
+          ) : mine ? (
+            // everyone may take back their own song
+            <IconButton edge="end" aria-label={t(S.remove)} onClick={() => onAction('delete')}>
+              <DeleteOutlineRounded />
+            </IconButton>
           ) : undefined
         }
       >
@@ -209,7 +230,6 @@ function Row({
             <Box component="span" sx={{ display: 'block' }}>
               <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {t(S.addedBy, item.user)}
-                {mine && <Chip component="span" size="small" label={user} sx={{ height: 18, fontSize: 11 }} />}
               </Box>
               <Box component="span" sx={{ display: 'block' }}>
                 <SplitLine split={item.split} dense />
