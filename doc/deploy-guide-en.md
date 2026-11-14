@@ -158,6 +158,14 @@ git switch experimental
 
 To go back to the normal version: `git switch master`.
 
+**New web page (trial).** The phone page has been rebuilt: four tabs at the bottom (Home, Queue, Search, Library), dark and light themes, and download progress. It is on the `ui/mui-spa` branch (with everything from the experimental version) and not merged yet:
+
+```bash
+git switch ui/mui-spa
+```
+
+Button names in this guide are those of the new page. `master` and `experimental` still have the old page; where names differ, the old ones are given too.
+
 ---
 
 ## Step 3. Create the venv and install the add-ons
@@ -219,7 +227,11 @@ The karaoke screen shows a QR code and an address such as `http://192.168.1.23:5
 
 1. Connect your phone to the **same Wi-Fi** as the computer.
 2. Scan the QR code, or type the address into the phone's browser.
-3. Search for a song (for example "song name karaoke"), download it and add it to the queue.
+3. The first time, enter your name (it is shown next to the songs you add).
+4. Go to **Search** and type a song or singer. Songs already in your library come first: tap one to add it to the queue.
+5. If it isn't in your library, tap **Search YouTube for …**, then tap a result. It downloads and joins the queue by itself. You can also paste a link from YouTube or another site (for example Bilibili).
+
+On the old page (`master`, `experimental`): search for "song name karaoke" on the search page, download it and add it to the queue. To paste a link, open **Advanced**.
 
 To stop the program, go back to the terminal and press `Ctrl` + `C`.
 
@@ -293,7 +305,7 @@ Note: it works through **every song already in the folder**. With a big library 
 
 ### 5c. Turning it off and on
 
-On the phone, open **Settings** (the gear icon at the top). The **Vocal removal** card has a switch, **Vocal Splitter** (in the `master` version: the **Information** page, **Advanced Control Options**, **Background vocal splitting**):
+On the phone, open **Settings** (the gear icon at the top). The **Vocal removal** card has a switch, **Vocal Splitter** (on the old page, `master` and `experimental`: the **Information** page, **Advanced Control Options**, **Background vocal splitting**):
 
 - **Off**: the vocal remover stops and leaves your songs alone. Instrumental and vocal tracks that are already finished **can still be played**.
 - **On**: it starts again where it left off.
@@ -320,7 +332,7 @@ python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
 
 ### 5d. Choosing the model (experimental version only)
 
-In the `experimental` version (Step 2), the **Vocal removal** card in **Settings** has a **Model** list. Only the admin sees it if you set an admin password. It applies to the whole karaoke, not to one phone.
+The experimental version and the new page (Step 2) let you choose the model: on the new page in **Settings** → **Vocal removal** → **Model**, on the old page of `experimental` in the **Information** page → **Advanced Control Options** → **Vocal splitter mode**. Only the admin sees it if you set an admin password. It applies to the whole karaoke, not to one phone.
 
 | Choice | What it does | Speed on the test laptop (CPU, 4 cores) |
 |---|---|---|
@@ -407,10 +419,13 @@ Install VLC (Step 1). If VLC is in an unusual place, tell the program where: `py
 This happened in the original project and is fixed in this fork. Run `git pull` to make sure you have the latest version.
 
 **A song is skipped with a red "Cannot play" message.**
-The file is damaged or isn't a real video or audio file. Delete it in **Library** (the ⋮ button next to the song, admin only) and download it again.
+The file is damaged or isn't a real video or audio file. Delete it in **Library** (the ⋮ button next to the song, admin only; **Browse** on the old page) and download it again.
 
 **The phone page opens but songs won't download.**
-Update the YouTube downloader: `pip install -U yt-dlp`.
+- First update the downloader: `pip install -U yt-dlp` (on the new page also **Settings** → **Update download tool**).
+- The new page shows download progress. Slow sites can take several minutes. If a site keeps refusing, "Download failed" appears within about a minute, and you can tap again to retry.
+- **Bilibili** sometimes refuses downloads (`HTTP Error 567` in the terminal). Trying again later may work. This happens on Bilibili's side and can't be fixed in the program. YouTube links work best.
+- Only sound or only picture after a download: ffmpeg is missing, so video and sound could not be joined. Install ffmpeg (Step 1) and download the song again.
 
 **The model list says "not downloaded yet" and it stays that way (experimental version).**
 The vocal remover downloads the model when it starts working, so it must be running: check that PyTorch is installed and the switch is on (Step 5c). If the log file says the download failed, download the file yourself (Step 5d).
