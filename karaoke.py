@@ -1,6 +1,5 @@
 import os, sys, io, random, time, json, datetime
 import logging, socket, subprocess, threading
-import multiprocessing as mp
 import shutil, psutil, traceback, tarfile, requests
 from subprocess import check_output
 from collections import *
@@ -16,6 +15,7 @@ from bidi.algorithm import get_display
 from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient
+from lib.vocal_dirs import is_split_disabled
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString, getString1
@@ -44,7 +44,8 @@ def broadcast_notification(string_id, value, category = "is-danger", timeout_ms 
 			logging.debug(f"Could not notify {ip}: {e}")
 
 def flash(message: str, category: str = "message", client_ip = ''):
-	ws_send(client_ip or request.remote_addr, f'showNotification("{message}", "{category}")')
+	# message often contains a song title; json.dumps makes it a safe JavaScript string literal
+	ws_send(client_ip or request.remote_addr, f'showNotification({json.dumps(str(message))}, {json.dumps(category)})')
 
 def cleanse_modules(name):
 	try:
@@ -781,7 +782,7 @@ class Karaoke:
 			match = [(ii,each) for ii,each in enumerate(self.queue) if song_file in each["file"]]
 			index, song = match[0] if match else (-1, None)
 			if song == None:
-				logging.error("Song not found in queue: " + song["file"])
+				logging.error("Song not found in queue: " + song_file)
 				return False
 			if action == "up":
 				if index < 1:
@@ -1135,27 +1136,65 @@ class Karaoke:
 
 	def vocal_alive(self):
 		try:
-			return bool(self.vocal_process and self.vocal_process.is_alive())\
-					or bool([1 for p in psutil.process_iter() if 'vocal_splitter.py' in p.cmdline()])
-		except:
+			if self.vocal_process is not None and self.vocal_process.poll() is None:
+				return True
+			# a splitter started by hand (e.g. in another terminal) also counts
+			for p in psutil.process_iter(['cmdline']):
+				if any(os.path.basename(a) == 'vocal_splitter.py' for a in (p.info['cmdline'] or [])):
+					return True
+			return False
+		except Exception:
 			return None
 
+	@staticmethod
+	def vocal_splitter_missing():
+		"""Why the vocal splitter cannot run on this machine, or '' if it can."""
+		import importlib.util
+		missing = [m for m in ('torch', 'librosa', 'soundfile') if importlib.util.find_spec(m) is None]
+		if missing:
+			return 'Python package(s) not installed: ' + ', '.join(missing)
+		if not shutil.which('ffmpeg'):
+			return 'ffmpeg not found'
+		return ''
+
 	def vocal_restart(self):
-		if self.platform == 'windows' or self.run_vocal:
-			import vocal_splitter
-			if self.vocal_process is not None and self.vocal_process.is_alive():
-				self.vocal_process.kill()
-			if shutil.which('ffmpeg'):
-				self.vocal_process = mp.Process(target=vocal_splitter.main, args=(['-p', '-d', self.download_path],))
-				self.vocal_process.start()
-		else:
-			os.system(f"tmux send-keys -t PiKaraoke:0.4 C-c && tmux send-keys -t PiKaraoke:0.4 Up Enter")
+		# The splitter runs as a separate Python process, so PyTorch is never loaded into this
+		# (multi-threaded, UI) process, and a crash in the splitter cannot take the karaoke down.
+		self.vocal_stop()
+		if self.no_vocal:
+			logging.info('Vocal splitter not started (--no-vocal)')
+			return False
+		if is_split_disabled(self.download_path):
+			logging.info('Vocal splitter not started (switched off on the Info page)')
+			return False
+		why = self.vocal_splitter_missing()
+		if why:
+			logging.info(f'Vocal splitter not started: {why}')
+			return False
+		script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vocal_splitter.py')
+		cmd = [sys.executable, script, '-d', self.download_path, '--port', str(self.port), '--parent-pid', str(os.getpid())]
+		if self.ssl:
+			cmd.append('--ssl')
+		log_path = os.path.join(self.tmp_dir, 'vocal_splitter.log')
+		try:
+			with open(log_path, 'w') as log:
+				self.vocal_process = subprocess.Popen(cmd, cwd=os.path.dirname(script), stdin=subprocess.DEVNULL,
+				                                      stdout=log, stderr=subprocess.STDOUT)
+			logging.info(f'Vocal splitter started (pid {self.vocal_process.pid}), log: {log_path}')
+			return True
+		except Exception as e:
+			logging.error(f'Could not start the vocal splitter: {e}')
+			self.vocal_process = None
+			return False
 
 	def vocal_stop(self):
-		if self.vocal_process is not None and self.vocal_process.is_alive():
-			self.vocal_process.kill()
-		elif self.platform != 'windows':
-			os.system(f"tmux send-keys -t PiKaraoke:0.4 C-c")
+		p, self.vocal_process = self.vocal_process, None
+		if p is not None and p.poll() is None:
+			p.terminate()
+			try:
+				p.wait(5)
+			except subprocess.TimeoutExpired:
+				p.kill()
 
 	def get_mp3_volume(self, filename):
 		try:
@@ -1215,9 +1254,8 @@ class Karaoke:
 		logging.info("Starting PiKaraoke!")
 		self.running = True
 
-		# Windows does not have tmux, vocal splitter can only be invoked from the main program
-		if self.platform == 'windows' or self.run_vocal:
-			Try(lambda: self.vocal_restart())
+		# Start the background vocal splitter (unless --no-vocal, switched off, or PyTorch is not installed)
+		Try(lambda: self.vocal_restart())
 
 		while self.running:
 			try:

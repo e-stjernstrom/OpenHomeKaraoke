@@ -236,3 +236,4 @@ Please copy 'chrome://flags/#unsafely-treat-insecure-origin-as-secure' into clip
 You need to change the security setting in Firefox browser to allow microphone access in HTTP website, do you want to proceed?
 Please open 'about:config' in a new tab and set 'media.getusermedia.insecure.enabled' and 'media.devices.insecure.enabled'.
 "%s" نشي غږول کېدای (کېدای شي فایل خراب وي). پرېښودل شو.
+په شالید کې د غږ جلا کول (کله چې بند وي، موجود موسیقي/غږیز ټریکونه بیا هم غږېدای شي)

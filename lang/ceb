@@ -236,3 +236,4 @@ Please copy 'chrome://flags/#unsafely-treat-insecure-origin-as-secure' into clip
 You need to change the security setting in Firefox browser to allow microphone access in HTTP website, do you want to proceed?
 Please open 'about:config' in a new tab and set 'media.getusermedia.insecure.enabled' and 'media.devices.insecure.enabled'.
 Dili ma-play ang "%s" (basin nadaot ang file). Gilaktawan.
+Pagbulag sa tingog sa background (kon gipalong, ma-play gihapon ang naa nang instrumental/vocal nga track)

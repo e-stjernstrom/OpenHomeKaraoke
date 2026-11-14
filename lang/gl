@@ -236,3 +236,4 @@ Please copy 'chrome://flags/#unsafely-treat-insecure-origin-as-secure' into clip
 You need to change the security setting in Firefox browser to allow microphone access in HTTP website, do you want to proceed?
 Please open 'about:config' in a new tab and set 'media.getusermedia.insecure.enabled' and 'media.devices.insecure.enabled'.
 Non se pode reproducir "%s" (pode que o ficheiro estea danado). Omitiuse.
+Separación de voz en segundo plano (desactivada, as pistas instrumentais/vocais existentes aínda se poden reproducir)

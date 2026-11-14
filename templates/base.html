@@ -19,6 +19,14 @@
   <link rel="stylesheet" href="/static/fontello/css/fontello.css?cachebust=1">
 
   <script>
+// Song titles and user names come from file names, YouTube titles and the user's own cookie:
+// escape them before putting them into HTML, and encode them fully before putting them into URLs.
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[c]);
+}
+function uriq(s) {
+  return encodeURIComponent(s).replace(/['()*!]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+}
 function showNotification(message, categoryClass, timeout=3000) {
   console.log("Showing notification")
   $("#notification-alt").addClass(categoryClass)

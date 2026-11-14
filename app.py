@@ -17,6 +17,7 @@ from constants import VERSION
 from collections import defaultdict
 from lib.get_platform import *
 from lib.vlcclient import get_default_vlc_path
+from lib.vocal_dirs import ensure_vocal_dirs, is_split_disabled, set_split_enabled
 
 try:
 	from urllib.parse import quote, unquote
@@ -86,9 +87,9 @@ def status_thread():
 
 		for ip, ws in ip2websock.items():
 			if ip2pane.get(ip, '') == 'home':
-				ws.send(f"update('{status_full}')")
+				ws.send(f"update({json.dumps(status_full)})")
 			elif ip2pane.get(ip, '') == 'queue':
-				ws.send(f"update('{K.queue_json}')")
+				ws.send(f"update({json.dumps(K.queue_json)})")
 		K.status_dirty = False
 
 # Define global symbols for Jinja templates 
@@ -302,6 +303,18 @@ def set_save_delays(state):
 def set_vocal_mode(mode):
 	K.use_DNN_vocal = (mode.lower() == 'true')
 	K.play_vocal()
+	return ''
+
+
+@app.route("/vocal_split/<state>")
+def vocal_split(state):
+	if is_admin():
+		enabled = state.lower() == 'true'
+		set_split_enabled(K.download_path, enabled)
+		if enabled:
+			K.vocal_restart()
+		else:
+			K.vocal_stop()
 	return ''
 
 
@@ -772,6 +785,7 @@ def info():
 		vocalsplitter = get_status(vocalsplitter) + vocal_extra,
 		platform = K.platform,
 		save_delays = bool(K.save_delays),
+		vocal_split = not is_split_disabled(K.download_path),
 		admin = is_admin(),
 		admin_enabled = admin_password != None
 	)
@@ -828,6 +842,7 @@ def f_info():
 		vocalsplitter = get_status(vocalsplitter) + vocal_extra,
 		platform = K.platform,
 		save_delays = bool(K.save_delays),
+		vocal_split = not is_split_disabled(K.download_path),
 		admin = is_admin(),
 		admin_enabled = admin_password != None
 	)
@@ -851,12 +866,12 @@ def _add_spoken(client_ip, user, getString):
 	res = findMedia(K.download_path, asr_postprocess(asr_output['text']), lang=asr_output['language'])
 	ws = ip2websock.get(client_ip, '')
 	if not res:
-		return ws.send(f"showNotification('{getString(226)%asr_output['text']}', 'is-info')")
+		return ws.send(f"showNotification({json.dumps(fill_s(getString(226), asr_output['text']))}, 'is-info')")
 	res_titles = [filename_from_path(s) for s in res]
 	if len(res)==1:
 		add_res = K.enqueue(res[0], user)
-		return ws.send(f'add1song("{res_titles[0]}","{res[0]}")' if add_res else f"showNotification('{getString(116)+res_titles[0]}', 'is-info')")
-	return ws.send(f"addSongs('{json.dumps([res_titles, res])}')")
+		return ws.send(f'add1song({json.dumps(res_titles[0])},{json.dumps(res[0])})' if add_res else f"showNotification({json.dumps(getString(116)+res_titles[0])}, 'is-info')")
+	return ws.send(f"addSongs({json.dumps(json.dumps([res_titles, res]))})")
 
 
 @app.route('/add_spoken/<user>', methods=['POST'])
@@ -878,8 +893,7 @@ def get_ASR(cmd=''):
 # Delay system commands to allow redirect to render first
 def delayed_halt(cmd):
 	time.sleep(3)
-	if K.vocal_process is not None and K.vocal_process.is_alive():
-		K.vocal_process.terminate()
+	K.vocal_stop()
 	K.queue_clear()  # stop all pending omxplayer processes
 	K.stop()
 	if cmd == 0:
@@ -1052,7 +1066,12 @@ if __name__ == "__main__":
 	)
 	parser.add_argument(
 		"-V", "--run-vocal",
-		help = "Explicitly run vocal-splitter process from the main program (by default, it only run explicitly in Windows)",
+		help = "Deprecated, kept for old scripts: the vocal splitter now starts automatically on all platforms when PyTorch is installed",
+		action = 'store_true',
+	)
+	parser.add_argument(
+		"--no-vocal",
+		help = "Do not start the background vocal splitter (existing instrumental/vocal tracks can still be played)",
 		action = 'store_true',
 	)
 	parser.add_argument(
@@ -1227,6 +1246,7 @@ if __name__ == "__main__":
 	if not os.path.exists(args.dl_path):
 		print(getString(47) + args.dl_path)
 		os.makedirs(args.dl_path)
+	ensure_vocal_dirs(args.dl_path)
 
 	# determine whether to save/load delays
 	args.dft_delays_file = args.dl_path+'.delays'

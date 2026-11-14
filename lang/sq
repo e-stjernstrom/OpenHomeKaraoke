@@ -236,3 +236,4 @@ Please copy 'chrome://flags/#unsafely-treat-insecure-origin-as-secure' into clip
 You need to change the security setting in Firefox browser to allow microphone access in HTTP website, do you want to proceed?
 Please open 'about:config' in a new tab and set 'media.getusermedia.insecure.enabled' and 'media.devices.insecure.enabled'.
 Nuk mund të luhet "%s" (skedari mund të jetë i dëmtuar). U kapërcye.
+Ndarja e vokalit në sfond (kur është e fikur, këngët instrumentale/vokale ekzistuese mund të luhen ende)

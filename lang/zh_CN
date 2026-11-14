@@ -236,3 +236,4 @@ Youtube-dl (yt-dlp) 版本
 您需要更改火狐浏览器的安全设置，允许HTTP网页访问麦克风，是否继续？
 请在新的页面中打开'about:config'，并且设置'media.getusermedia.insecure.enabled' and 'media.devices.insecure.enabled'。
 无法播放“%s”（文件可能已损坏），已跳过。
+后台人声分离（关闭后，已生成的伴奏/人声音轨仍可播放）
