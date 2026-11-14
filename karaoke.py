@@ -343,7 +343,9 @@ class Karaoke:
 		if not self.hide_splash_screen:
 			logging.debug("Toggling fullscreen...")
 			self.full_screen = not self.full_screen if fullscreen is None else fullscreen
-			if self.full_screen:
+			if self.platform == 'osx':
+				self.set_mac_full_screen(self.full_screen)
+			elif self.full_screen:
 				self.screen = pygame.display.set_mode([self.WIDTH, self.HEIGHT], self.get_default_display_mode())
 			else:
 				self.screen = pygame.display.set_mode([self.WIDTH*3//4, self.HEIGHT*3//4], pygame.RESIZABLE)
@@ -355,6 +357,29 @@ class Karaoke:
 				self.play_transposed(self.now_playing_transpose)
 			else:
 				self.render_splash_screen()
+
+	def set_mac_full_screen(self, full):
+		"""macOS: fullscreen in its own Space, like other Mac apps. pygame.FULLSCREEN puts the
+		window above everything (shielding level): Cmd+Tab cannot switch away and the system's
+		volume/brightness overlays are hidden behind it."""
+		from pygame._sdl2.video import Window
+		window_size = [self.WIDTH*3//4, self.HEIGHT*3//4]
+		if pygame.display.get_surface() is None:
+			pygame.display.set_mode(window_size, pygame.RESIZABLE)
+		window = Window.from_display_module()
+		old_size = pygame.display.get_window_size()
+		if full:
+			window.set_fullscreen(True)  # desktop fullscreen, which SDL puts in a Space
+		else:
+			window.set_windowed()
+			window.size = window_size
+		# the Space animation resizes the window a moment later; wait for it (up to 2 s)
+		deadline = time.time() + 2
+		done = (lambda s: s != tuple(old_size)) if full else (lambda s: s == tuple(window_size))
+		while not done(pygame.display.get_window_size()) and time.time() < deadline:
+			pygame.event.pump()
+			time.sleep(0.03)
+		self.screen = pygame.display.get_surface()
 
 	def normalize(self, v):
 		r = self.screen.get_width()/self.ref_W
