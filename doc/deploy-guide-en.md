@@ -279,7 +279,7 @@ pip install torch
 Then, for everyone:
 
 ```bash
-pip install librosa==0.10.0 soundfile tqdm
+pip install librosa==0.10.2.post1 soundfile tqdm
 ```
 
 On the test machine these two steps took under a minute together.
