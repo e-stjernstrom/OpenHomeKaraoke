@@ -275,7 +275,7 @@ It goes through your songs one at a time, songs in the queue first. When a song 
 
 Note: it works through **every song already in the folder**. With a big library this keeps the computer busy for a long time. It uses only half of the processor and runs at low priority, so the karaoke itself stays smooth.
 
-**How long does it take?** SPEED_EN
+**How long does it take?** On the test laptop (8-core ARM processor, no graphics card, using 4 cores), a 40-second song took about 22 seconds. So a 4-minute song takes roughly 2 to 3 minutes. An NVIDIA card is much faster.
 
 ### 5c. Turning it off and on
 
