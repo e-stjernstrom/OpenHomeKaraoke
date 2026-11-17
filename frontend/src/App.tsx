@@ -37,6 +37,7 @@ import { useApp, type Page } from './state';
 import { S } from './strings';
 import Snackbars from './components/Snackbars';
 import { LanguageDialog, NameDialog } from './components/Dialogs';
+import { YouTubeBlockedDialog } from './components/YouTubeBlocked';
 import HomePage from './pages/Home';
 import QueuePage from './pages/Queue';
 import SearchPage from './pages/Search';
@@ -218,6 +219,7 @@ export default function App() {
       <Snackbars bottomOffset={wide ? 0 : 64} />
       <NameDialog open={needsName || nameOpen} onClose={() => setNameOpen(false)} required={needsName} />
       <LanguageDialog open={langOpen} onClose={() => setLangOpen(false)} />
+      <YouTubeBlockedDialog />
     </Box>
   );
 }

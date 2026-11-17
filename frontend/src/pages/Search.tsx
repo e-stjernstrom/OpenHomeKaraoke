@@ -40,6 +40,7 @@ import { getJson, hhmmss, HttpError, postBlob, postJson, type OkResponse, type Y
 import { useApp } from '../state';
 import { S } from '../strings';
 import { useEnqueue, useLibrary } from '../library';
+import { YouTubeBlockedNotice } from '../components/YouTubeBlocked';
 
 const hostOf = (u: string) => {
   try {
@@ -183,6 +184,8 @@ export default function SearchPage() {
         }}
       />
 
+      <YouTubeBlockedNotice />
+
       {!query && (
         <Box sx={{ px: 1 }}>
           <Typography variant="body2" color="text.secondary">
@@ -292,8 +295,10 @@ function useDownloadState(url: string) {
   const [state, setState] = useState<number | string | null>(null);
   const [since, setSince] = useState<number | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const [blocked, setBlocked] = useState(false);
   useEffect(() => {
     setState(null);
+    setBlocked(false);
     getJson<number | string>('/check_download?url=' + encodeURIComponent(url))
       // a late answer must not undo a download started meanwhile
       .then((v) => setState((prev) => (prev !== null ? prev : v === '' ? null : v)))
@@ -301,12 +306,14 @@ function useDownloadState(url: string) {
     const started = (e: Event) => {
       if ((e as CustomEvent<string>).detail !== url) return;
       setState(1);
+      setBlocked(false);
       setSince(Date.now());
     };
     window.addEventListener('ohk-download', started);
     const off = onServerEvent((e) => {
       if (e.type !== 'download' || e.url !== url) return;
       setState(e.state);
+      setBlocked(e.reason === 'blocked');
       setProgress(e.progress ?? null);
       if (e.state === 1) setSince((t) => t ?? Date.now());
     });
@@ -316,7 +323,8 @@ function useDownloadState(url: string) {
     };
   }, [url, onServerEvent]);
   // 1: downloading, 0 / '00': done, -1: failed, '01': downloaded but not found (see Karaoke.download_video)
-  return { busy: state === 1, done: state === 0 || state === '00', failed: state === -1 || state === '01', refused: state === -1, since, progress };
+  // blocked: YouTube refused it as a suspected bot (see YouTubeBlockedDialog)
+  return { busy: state === 1, done: state === 0 || state === '00', failed: state === -1 || state === '01', refused: state === -1, blocked, since, progress };
 }
 
 /** Seconds since `since`, updated every second. */
@@ -353,7 +361,7 @@ function useStartDownload() {
 function LinkDownload({ url, onOptions }: { url: string; onOptions: () => void }) {
   const { t } = useApp();
   const start = useStartDownload();
-  const { busy, done, failed, refused, since, progress } = useDownloadState(url);
+  const { busy, done, failed, refused, blocked, since, progress } = useDownloadState(url);
   const secs = useElapsed(since, busy);
   if (busy)
     return (
@@ -387,7 +395,9 @@ function LinkDownload({ url, onOptions }: { url: string; onOptions: () => void }
     <Stack spacing={1}>
       {done && <Alert severity="success">{t(S.downloadDone)}</Alert>}
       {failed && (
-        <Alert severity="error">{refused && !/(^|\.)(youtube\.com|youtu\.be)$/.test(hostOf(url)) ? t(S.downloadFailedSite) : t(S.downloadFailed)}</Alert>
+        <Alert severity="error">
+          {blocked ? t(S.ytBlockedTitle) : refused && !/(^|\.)(youtube\.com|youtu\.be)$/.test(hostOf(url)) ? t(S.downloadFailedSite) : t(S.downloadFailed)}
+        </Alert>
       )}
       <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
         <Button variant="contained" color="secondary" startIcon={<DownloadRounded />} onClick={() => start(url, url)}>
@@ -412,7 +422,7 @@ const fmtDuration = (d: string) => {
 function YouTubeRow({ r, onOptions }: { r: YouTubeResult; onOptions: () => void }) {
   const { t } = useApp();
   const start = useStartDownload();
-  const { busy, done, failed, since, progress } = useDownloadState(r.url);
+  const { busy, done, failed, blocked, since, progress } = useDownloadState(r.url);
   const secs = useElapsed(since, busy);
   const download = () => start(r.url, r.title);
   return (
@@ -449,7 +459,7 @@ function YouTubeRow({ r, onOptions }: { r: YouTubeResult; onOptions: () => void 
             busy
               ? `${t(S.downloading)}${progress !== null ? ` ${Math.round(progress * 100)}%` : ''}${secs !== null ? ` · ${hhmmss(secs)}` : ''}`
               : failed
-                ? t(S.downloadFailed)
+                ? t(blocked ? S.ytBlockedTitle : S.downloadFailed)
                 : done
                   ? t(S.downloadDone)
                   : fmtDuration(r.duration)

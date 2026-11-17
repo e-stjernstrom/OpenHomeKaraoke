@@ -361,3 +361,13 @@ Subtitle languages, in order
 The first one the video has is shown. If it has none of them, its own language is used.
 Move up
 Move down
+YouTube won't let this karaoke download right now
+YouTube thinks this network downloads too much and asks to confirm it is not a robot. Trying again right away will most likely be refused too.
+What you can do
+Sing songs that are already in the library.
+Try again later, after 30 minutes to a few hours.
+Connect the karaoke computer to another network, for example a phone's hotspot, and try again.
+Admin: installing the PO token service makes this happen less often. In the program folder run python scripts/setup_bgutil.py, then restart the karaoke.
+Admin: the PO token service is switched off (--no-pot). Starting without --no-pot makes this happen less often.
+Admin: the PO token service is already running. As a last resort, start the karaoke with -c chrome to download signed in to YouTube. This is experimental: YouTube may restrict that account, so use a spare one.
+YouTube refused a download %s minutes ago. Trying again soon will most likely be refused too.

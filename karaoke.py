@@ -1,4 +1,4 @@
-import os, sys, io, random, time, json, datetime
+import os, sys, io, re, random, time, json, datetime
 import logging, socket, subprocess, threading
 import shutil, psutil, traceback, tarfile, requests
 from subprocess import check_output
@@ -30,6 +30,13 @@ if get_platform() != "windows":
 STD_VOL = 65536/8/np.sqrt(2)
 ip2websock, ip2lang = {}, {}
 STR_CANNOT_PLAY = 238  # 'Cannot play "%s" (the file may be damaged). Skipped.'
+
+# the last yt-dlp error message of this thread (downloads run in their own threads)
+_yt_error = threading.local()
+
+def youtube_refused(message):
+	"""True if YouTube refused as a suspected bot or for too many requests: retrying soon is useless."""
+	return bool(re.search(r"not a bot|HTTP Error 429|Too Many Requests", message or '', re.I))
 
 def ws_send(ip, event):
 	"""Send one event to the web page of this client. Events are JSON objects with a "type" key
@@ -100,6 +107,8 @@ class Karaoke:
 	audio_delay = 0
 	has_video = True
 	has_subtitle = False
+	youtube_blocked_at = 0  # time.time() when YouTube last refused a download as a bot
+	pot_state = 'off'
 	subtitle_delay = 0
 	play_speed = 1.0
 	show_subtitle = True
@@ -537,6 +546,7 @@ class Karaoke:
 	def _call_yt_dlp(self, argv, get_stdout = False, progress = None, ydl_class = None):
 		"""Run yt-dlp. progress(fraction) is called while downloading; ydl_class replaces
 		yt_dlp.YoutubeDL (both in-process yt-dlp only)."""
+		_yt_error.msg = ''
 		if progress and not self.youtubedl_path and not get_stdout:
 			import yt_dlp
 			try:
@@ -552,6 +562,7 @@ class Karaoke:
 				return e.code
 			except Exception as e:
 				logging.error(f'yt-dlp: {e}')
+				_yt_error.msg = str(e)
 				return 1
 		if self.youtubedl_path:
 			if get_stdout:
@@ -643,12 +654,14 @@ class Karaoke:
 			["-o", self.download_path+'tmp/'+dl_path] + opt_sub + [song_url]
 		logging.info("Youtube-dl command: " + " ".join(cmd))
 		rc = self.call_yt_dlp(cmd, progress = progress, ydl_class = ydl_class)
-		if rc != 0:
+		blocked = rc != 0 and youtube_refused(getattr(_yt_error, 'msg', ''))
+		if rc != 0 and not blocked:
 			logging.error("Error code while downloading, retrying without format options ...")
 			cmd = ['--fixup', 'force', '--socket-timeout', '15', '-R', '10', '--fragment-retries', '10', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + \
 				["-o", self.download_path + 'tmp/' + dl_path] + opt_sub + [song_url]
 			logging.debug("Youtube-dl command: " + " ".join(cmd))
 			rc = self.call_yt_dlp(cmd, progress = progress, ydl_class = ydl_class)
+			blocked = rc != 0 and youtube_refused(getattr(_yt_error, 'msg', ''))
 		if rc == 0:
 			logging.debug("Song successfully downloaded: " + song_url)
 			self.downloading_songs[song_url] = 0
@@ -666,11 +679,17 @@ class Karaoke:
 				logging.error("Error queueing song: " + song_url)
 				self.downloading_songs[song_url] = '01'
 				flash(getString2(189)+' '+getString2(192), client_ip = client_ip)
+		elif blocked:
+			# the page shows what to do instead (retrying soon will be refused too)
+			logging.error("YouTube refused the download (suspected bot or too many requests): " + song_url)
+			self.downloading_songs[song_url] = -1
+			self.youtube_blocked_at = time.time()
 		else:
 			logging.error("Error downloading song: " + song_url)
 			self.downloading_songs[song_url] = -1
 			flash(getString2(190), client_ip = client_ip)
-		ws_send(client_ip, {'type': 'download', 'url': song_url, 'state': self.downloading_songs.get(song_url)})
+		ws_send(client_ip, {'type': 'download', 'url': song_url, 'state': self.downloading_songs.get(song_url)}
+		        | ({'reason': 'blocked'} if blocked and rc != 0 else {}))
 
 	def get_available_songs(self):
 		logging.info("Fetching available songs in: " + self.download_path)

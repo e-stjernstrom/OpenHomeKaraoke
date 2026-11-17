@@ -567,6 +567,13 @@ def download():
 	t.start()
 	return jsonify(ok = True, message = getString2(16) + dct["song_url"] + '\n' + getString2(17 if dct.get('enqueue', False) else 18))
 
+@app.route("/api/youtube_status")
+def youtube_status():
+	"""When YouTube last refused a download as a bot (seconds ago, or null), and what the admin
+	could change: the PO token service ('running', 'missing' or 'off') and browser cookies."""
+	at = K.youtube_blocked_at
+	return jsonify(blocked_ago = round(time.time() - at) if at else None, pot = K.pot_state, cookies = bool(K.cookies_opt))
+
 @app.route("/check_download", methods = ["POST", "GET"])
 def check_download():
 	# 1 downloading, 0 / '00' done, -1 / '01' failed, '' never asked for
@@ -966,9 +973,12 @@ if __name__ == "__main__":
 
 	# PO tokens make YouTube refuse downloads less often, without signing in (optional, bgutil)
 	if args.no_pot:
+		args.pot_state = 'off'
 		print("PO token provider: off (--no-pot)")
 	else:
-		print("PO token provider: " + pot_provider.start(os.path.join(args.tmp_dir, 'bgutil.log'))[1])
+		ok, message = pot_provider.start(os.path.join(args.tmp_dir, 'bgutil.log'))
+		args.pot_state = 'running' if ok else 'missing'
+		print("PO token provider: " + message)
 
 	# Handle OMX player if specified
 	if platform == "raspberry_pi" and args.use_omxplayer:

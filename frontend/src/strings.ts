@@ -210,6 +210,16 @@ export const S = {
   subtitleLangsHint: 361,
   moveItemUp: 362,
   moveItemDown: 363,
+  ytBlockedTitle: 364,
+  ytBlockedText: 365,
+  ytBlockedWhatToDo: 366,
+  ytBlockedSingLibrary: 367,
+  ytBlockedLater: 368,
+  ytBlockedNetwork: 369,
+  ytBlockedAdminInstall: 370,
+  ytBlockedAdminOff: 371,
+  ytBlockedAdminCookies: 372,
+  ytBlockedNotice: 373,
 } as const;
 
 export type StringId = (typeof S)[keyof typeof S];
