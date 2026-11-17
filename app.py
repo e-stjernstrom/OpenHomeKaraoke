@@ -206,6 +206,7 @@ def api_config():
 		asr = bool(getattr(args, 'cloud', '')),
 		use_vlc = K.use_vlc,
 		high_quality = K.high_quality,
+		tv_lang = os.lang,
 		platform = K.platform,
 		is_pi = get_platform() == "raspberry_pi",
 		version = VERSION,
@@ -553,7 +554,7 @@ def transform_boolean(dct, S):
 @app.route("/download", methods = ["POST"])
 def download():
 	dct = request.form.to_dict() | (request.get_json(silent = True) or {})
-	dct = transform_boolean({k: dct[k] for k in ('song_url', 'song_added_by', 'enqueue', 'include_subtitles', 'high_quality') if k in dct},
+	dct = transform_boolean({k: dct[k] for k in ('song_url', 'song_added_by', 'enqueue', 'include_subtitles', 'high_quality', 'sub_langs') if k in dct},
 	                        {'enqueue', 'include_subtitles', 'high_quality'})
 	if not dct.get('song_url'):
 		return jsonify(ok = False), 400

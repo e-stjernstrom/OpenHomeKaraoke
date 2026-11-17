@@ -49,6 +49,7 @@ export interface Config {
   asr: boolean;
   use_vlc: boolean;
   high_quality: boolean;
+  tv_lang: string;
   platform: string;
   is_pi: boolean;
   version: string;

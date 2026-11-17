@@ -206,6 +206,10 @@ export const S = {
   dndCancelled: 357,
   downloadSlow: 358,
   downloadFailedSite: 359,
+  subtitleLangs: 360,
+  subtitleLangsHint: 361,
+  moveItemUp: 362,
+  moveItemDown: 363,
 } as const;
 
 export type StringId = (typeof S)[keyof typeof S];

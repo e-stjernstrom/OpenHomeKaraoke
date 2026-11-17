@@ -341,7 +341,7 @@ Volume normalized
 Please enter a name
 Too high or too low for you? Change the key.
 Only if sound, picture or lyrics are out of step.
-Subtitles inside the video, all languages
+Subtitles inside the video
 Takes much longer to download
 Every song plays about equally loud
 Remembers delays and subtitles for each song
@@ -357,3 +357,7 @@ Picked up %s.
 Moving cancelled.
 Still downloading. Long videos and slow sites can take several minutes; it gives up by itself if the connection keeps failing.
 Download failed. The site may refuse downloads or need you to be logged in; YouTube links work best.
+Subtitle languages, in order
+The first one the video has is shown. If it has none of them, its own language is used.
+Move up
+Move down

@@ -18,7 +18,7 @@ from lib import omxclient, vlcclient
 from lib.vocal_dirs import is_split_disabled
 from lib import vocal_models as vm
 from lib import split_status
-from lib import browser_cookies
+from lib import browser_cookies, subtitle_langs
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString, getString1
@@ -514,7 +514,7 @@ class Karaoke:
 			break
 		return render
 
-	def call_yt_dlp(self, argv, get_stdout = False, progress = None):
+	def call_yt_dlp(self, argv, get_stdout = False, progress = None, ydl_class = None):
 		"""Run yt-dlp. If it fails because the browser cookies cannot be read (e.g. the browser
 		was closed for good, the cookies file was deleted, or a permission was taken away), run it
 		again without cookies so search and non-YouTube sites keep working."""
@@ -522,7 +522,7 @@ class Karaoke:
 		at = next((i for i in range(len(argv)) if cookies and argv[i:i+len(cookies)] == cookies), None)
 		error = None
 		try:
-			ret = self._call_yt_dlp(argv, get_stdout, progress)
+			ret = self._call_yt_dlp(argv, get_stdout, progress, ydl_class)
 			failed = not ret if get_stdout else ret not in (0, None)
 		except subprocess.CalledProcessError as e:
 			ret, failed, error = None, True, e
@@ -532,10 +532,11 @@ class Karaoke:
 				raise error
 			return ret
 		logging.warning(f"yt-dlp: cannot read cookies from {cookies[1]} ({reason}); retrying without them")
-		return self._call_yt_dlp(argv[:at] + argv[at+len(cookies):], get_stdout, progress)
+		return self._call_yt_dlp(argv[:at] + argv[at+len(cookies):], get_stdout, progress, ydl_class)
 
-	def _call_yt_dlp(self, argv, get_stdout = False, progress = None):
-		"""Run yt-dlp. progress(fraction) is called while downloading (in-process yt-dlp only)."""
+	def _call_yt_dlp(self, argv, get_stdout = False, progress = None, ydl_class = None):
+		"""Run yt-dlp. progress(fraction) is called while downloading; ydl_class replaces
+		yt_dlp.YoutubeDL (both in-process yt-dlp only)."""
 		if progress and not self.youtubedl_path and not get_stdout:
 			import yt_dlp
 			try:
@@ -545,7 +546,7 @@ class Karaoke:
 						total = d.get('total_bytes') or d.get('total_bytes_estimate')
 						if total:
 							progress(min(1.0, d.get('downloaded_bytes', 0) / total))
-				with yt_dlp.YoutubeDL(dict(po.ydl_opts, progress_hooks = [hook])) as ydl:
+				with (ydl_class or yt_dlp.YoutubeDL)(dict(po.ydl_opts, progress_hooks = [hook])) as ydl:
 					return ydl.download(po.urls)
 			except SystemExit as e:
 				return e.code
@@ -618,7 +619,7 @@ class Karaoke:
 		filename = f"{info_json['title']}---{info_json['id']}.{info_json['ext']}"
 		return filename if os.path.isfile(self.download_path+'tmp/'+filename) else None
 
-	def download_video(self, client_lang='', client_ip='', song_url = '', enqueue = False, song_added_by = "Pikaraoke", include_subtitles = False, high_quality = False):
+	def download_video(self, client_lang='', client_ip='', song_url = '', enqueue = False, song_added_by = "Pikaraoke", include_subtitles = False, high_quality = False, sub_langs = None):
 		logging.info("Downloading video: " + song_url)
 		getString2 = lambda ii: os.langs.get(client_lang, os.langs['en_US'])[ii]
 		self.downloading_songs[song_url] = 1
@@ -630,17 +631,24 @@ class Karaoke:
 				ws_send(client_ip, {'type': 'download', 'url': song_url, 'state': 1, 'progress': round(fraction, 3)})
 		dl_path = "%(title)s---%(id)s.%(ext)s"
 		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'mp4+m4a']
-		opt_sub = ['--sub-langs', 'all', '--embed-subs'] if include_subtitles else []
+		# subtitles: the languages the phone asked for, else its own language, the TV's, English
+		if isinstance(sub_langs, str):
+			sub_langs = sub_langs.split(',')
+		sub_langs = [str(c)[:20] for c in sub_langs][:10] if isinstance(sub_langs, list) else None
+		wanted = subtitle_langs.wanted_list(*(sub_langs or [client_lang, getattr(os, 'lang', ''), 'en']))[:subtitle_langs.LIMIT]
+		ydl_class = subtitle_langs.youtube_dl_class(wanted) if include_subtitles and not self.youtubedl_path else None
+		opt_sub = (['--sub-langs', 'all' if ydl_class else subtitle_langs.regex_list(wanted), '--embed-subs']
+		           + subtitle_langs.postprocessor_args(wanted)) if include_subtitles else []
 		cmd = ['--fixup', 'force', '--socket-timeout', '15', '-R', '10', '--fragment-retries', '10', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + opt_quality +\
 			["-o", self.download_path+'tmp/'+dl_path] + opt_sub + [song_url]
 		logging.info("Youtube-dl command: " + " ".join(cmd))
-		rc = self.call_yt_dlp(cmd, progress = progress)
+		rc = self.call_yt_dlp(cmd, progress = progress, ydl_class = ydl_class)
 		if rc != 0:
 			logging.error("Error code while downloading, retrying without format options ...")
 			cmd = ['--fixup', 'force', '--socket-timeout', '15', '-R', '10', '--fragment-retries', '10', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + \
 				["-o", self.download_path + 'tmp/' + dl_path] + opt_sub + [song_url]
 			logging.debug("Youtube-dl command: " + " ".join(cmd))
-			rc = self.call_yt_dlp(cmd, progress = progress)
+			rc = self.call_yt_dlp(cmd, progress = progress, ydl_class = ydl_class)
 		if rc == 0:
 			logging.debug("Song successfully downloaded: " + song_url)
 			self.downloading_songs[song_url] = 0
@@ -773,7 +781,9 @@ class Karaoke:
 			if self.subtitle_delay:
 				extra_params1 += [f'--sub-delay={self.subtitle_delay * 10}']
 			if self.show_subtitle:
-				extra_params1 += [f'--sub-track=0']
+				# not simply the first track: older downloads have all languages, alphabetical
+				track = subtitle_langs.pick_track(file_path, subtitle_langs.wanted_list(getattr(os, 'lang', ''), 'en'))
+				extra_params1 += [f'--sub-track={track or 0}']
 			if self.play_speed != 1:
 				extra_params1 += [f'--rate={self.play_speed}']
 			self.now_playing = self.filename_from_path(file_path)

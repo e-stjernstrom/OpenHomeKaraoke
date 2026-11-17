@@ -27,6 +27,8 @@ import LinearProgress from '@mui/material/LinearProgress';
 import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
 import SearchRounded from '@mui/icons-material/SearchRounded';
 import ClearRounded from '@mui/icons-material/ClearRounded';
+import ArrowUpwardRounded from '@mui/icons-material/ArrowUpwardRounded';
+import ArrowDownwardRounded from '@mui/icons-material/ArrowDownwardRounded';
 import MicRounded from '@mui/icons-material/MicRounded';
 import AddRounded from '@mui/icons-material/AddRounded';
 import CheckRounded from '@mui/icons-material/CheckRounded';
@@ -50,8 +52,9 @@ const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim());
 
 /** High quality / subtitles for downloads, remembered on this device (localStorage). Until the
  *  user picks, high quality follows the server's --high-quality option. */
-type DownloadPrefs = { hq: boolean; subs: boolean };
+type DownloadPrefs = { hq: boolean; subs: boolean; subLangs: string[] };
 const PREFS_KEY = 'ohk.downloadPrefs';
+const MAX_SUB_LANGS = 3;
 const prefsListeners = new Set<() => void>();
 let savedPrefs: Partial<DownloadPrefs> | null = null;
 const readPrefs = (): Partial<DownloadPrefs> => {
@@ -80,14 +83,16 @@ const subscribePrefs = (f: () => void) => {
 function useDownloadPrefs(): [DownloadPrefs, (p: Partial<DownloadPrefs>) => void] {
   const { config } = useApp();
   const saved = useSyncExternalStore(subscribePrefs, readPrefs);
-  return [{ hq: saved.hq ?? config.high_quality, subs: saved.subs ?? false }, writePrefs];
+  // subtitle languages: this page's language, then the karaoke screen's, then English
+  const subLangs = saved.subLangs?.length ? saved.subLangs : [...new Set([config.lang, config.tv_lang, 'en_US'].filter(Boolean))];
+  return [{ hq: saved.hq ?? config.high_quality, subs: saved.subs ?? false, subLangs: subLangs.slice(0, MAX_SUB_LANGS) }, writePrefs];
 }
 
 /** The remembered download settings as switches, so it is visible what one tap downloads. */
 function DownloadPrefSwitches() {
   const { t } = useApp();
   const [prefs, setPrefs] = useDownloadPrefs();
-  const sw = (label: string, key: keyof DownloadPrefs) => (
+  const sw = (label: string, key: 'hq' | 'subs') => (
     <FormControlLabel
       control={<Switch size="small" checked={prefs[key]} onChange={(e) => setPrefs({ [key]: e.target.checked })} />}
       label={<Typography variant="body2">{label}</Typography>}
@@ -328,7 +333,7 @@ function useElapsed(since: number | null, on: boolean) {
 function useStartDownload() {
   const { t, user, notify } = useApp();
   const [prefs] = useDownloadPrefs();
-  return (url: string, title: string, opts?: { enqueue: boolean; subs: boolean; hq: boolean }) => {
+  return (url: string, title: string, opts?: { enqueue: boolean; subs: boolean; hq: boolean; subLangs: string[] }) => {
     const o = opts ?? { enqueue: true, ...prefs };
     window.dispatchEvent(new CustomEvent('ohk-download', { detail: url }));
     postJson<OkResponse>('/download', {
@@ -336,6 +341,7 @@ function useStartDownload() {
       song_added_by: user,
       enqueue: o.enqueue,
       include_subtitles: o.subs,
+      sub_langs: o.subLangs,
       high_quality: o.hq,
     })
       .then(() => notify({ message: o.enqueue ? t(S.downloadingQueued, title) : `${t(S.downloading)} ${title}` }))
@@ -461,19 +467,21 @@ function DownloadDialog({ item, onClose }: { item: { url: string; title: string 
   const [prefs, setPrefs] = useDownloadPrefs();
   const [enqueue, setEnqueue] = useState(true);
   const [subs, setSubs] = useState(prefs.subs);
+  const [subLangs, setSubLangs] = useState(prefs.subLangs);
   const [hq, setHq] = useState(prefs.hq);
   useEffect(() => {
     // start from the remembered settings each time the dialog opens
     if (!item) return;
     setEnqueue(true);
     setSubs(prefs.subs);
+    setSubLangs(prefs.subLangs);
     setHq(prefs.hq);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item]);
   const go = () => {
     if (item) {
-      setPrefs({ subs, hq }); // what is picked here is used for the next downloads too
-      start(item.url, item.title, { enqueue, subs, hq });
+      setPrefs({ subs, hq, subLangs }); // what is picked here is used for the next downloads too
+      start(item.url, item.title, { enqueue, subs, hq, subLangs });
     }
     onClose();
   };
@@ -501,6 +509,7 @@ function DownloadDialog({ item, onClose }: { item: { url: string; title: string 
         <Stack>
           {opt(t(S.addAfterDownload), '', enqueue, setEnqueue)}
           {opt(t(S.includeSubtitles), t(S.subtitlesHint), subs, setSubs)}
+          {subs && <SubtitleLangs value={subLangs} onChange={setSubLangs} />}
           {opt(t(S.highQuality), t(S.hqHint), hq, setHq)}
         </Stack>
       </DialogContent>
@@ -511,6 +520,69 @@ function DownloadDialog({ item, onClose }: { item: { url: string; title: string 
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+/** The subtitle languages to download, in order: move up/down, remove, add (at most MAX_SUB_LANGS). */
+function SubtitleLangs({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const { t, config } = useApp();
+  const name = (code: string) => config.langs.find(([c]) => c === code)?.[1] ?? code;
+  const move = (i: number, d: number) => {
+    const v = [...value];
+    [v[i], v[i + d]] = [v[i + d], v[i]];
+    onChange(v);
+  };
+  return (
+    <Box sx={{ pl: 6.5, pb: 1 }}>
+      <Typography variant="body2">{t(S.subtitleLangs)}</Typography>
+      <Typography variant="caption" color="text.secondary" component="p">
+        {t(S.subtitleLangsHint)}
+      </Typography>
+      <List dense disablePadding>
+        {value.map((code, i) => (
+          <ListItem
+            key={code}
+            disableGutters
+            secondaryAction={
+              <>
+                <IconButton size="small" aria-label={t(S.moveItemUp)} disabled={i === 0} onClick={() => move(i, -1)}>
+                  <ArrowUpwardRounded fontSize="small" />
+                </IconButton>
+                <IconButton size="small" aria-label={t(S.moveItemDown)} disabled={i === value.length - 1} onClick={() => move(i, 1)}>
+                  <ArrowDownwardRounded fontSize="small" />
+                </IconButton>
+                <IconButton size="small" edge="end" aria-label={t(S.remove)} disabled={value.length === 1} onClick={() => onChange(value.filter((c) => c !== code))}>
+                  <ClearRounded fontSize="small" />
+                </IconButton>
+              </>
+            }
+          >
+            <ListItemText primary={`${i + 1}. ${name(code)}`} />
+          </ListItem>
+        ))}
+      </List>
+      {value.length < MAX_SUB_LANGS && (
+        <TextField
+          select
+          size="small"
+          fullWidth
+          label={t(S.add)}
+          sx={{ mt: 1 }}
+          value=""
+          onChange={(e) => onChange([...value, e.target.value])}
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+        >
+          <option value="" disabled />
+          {config.langs
+            .filter(([c]) => !value.includes(c))
+            .map(([c, n]) => (
+              <option key={c} value={c}>
+                {n}
+              </option>
+            ))}
+        </TextField>
+      )}
+    </Box>
   );
 }
 
