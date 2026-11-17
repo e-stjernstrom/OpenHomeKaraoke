@@ -231,7 +231,7 @@ export default function SearchPage() {
                     )
                   }
                 >
-                  <ListItemButton onClick={() => !s.queued && enqueue(s)} sx={{ pr: 7 }}>
+                  <ListItemButton onClick={() => !s.queued && enqueue(s)} sx={{ '&&&': { pr: 7 } }}>
                     <ListItemIcon sx={{ minWidth: 40 }}>
                       <LibraryMusicRounded fontSize="small" />
                     </ListItemIcon>
@@ -445,7 +445,7 @@ function YouTubeRow({ r, onOptions }: { r: YouTubeResult; onOptions: () => void 
         </Stack>
       }
     >
-      <ListItemButton onClick={download} disabled={busy || done} sx={{ pr: 12, gap: 1.5 }}>
+      <ListItemButton onClick={download} disabled={busy || done} sx={{ '&&&': { pr: 13 }, gap: 1.5 }}>
         <Box
           component="img"
           loading="lazy"
