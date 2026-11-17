@@ -368,6 +368,10 @@ class Karaoke:
 		if pygame.display.get_surface() is None:
 			pygame.display.set_mode(window_size, pygame.RESIZABLE)
 		window = Window.from_display_module()
+		# pygame 2.5 stores a pointer to this object in the SDL window without holding a
+		# reference, and hands it out again as event.window. Freeing it corrupts the heap
+		# (segfault later, e.g. in psutil), so keep every one alive.
+		Karaoke._sdl_windows = getattr(Karaoke, '_sdl_windows', []) + [window]
 		old_size = pygame.display.get_window_size()
 		if full:
 			window.set_fullscreen(True)  # desktop fullscreen, which SDL puts in a Space
