@@ -150,6 +150,22 @@ cd OpenHomeKaraoke
 
 This is a fork of the original project. It includes fixes for a freeze where the karaoke window showed "not responding" on Linux desktops, and for songs that fail to play.
 
+**Experimental version.** New features are tried out first on a branch called `experimental`: at the moment, a choice of vocal-removal models (Step 5d) and graphics-card support on Apple Silicon Macs (Step 5e). To use it, run this once after the `cd` above:
+
+```bash
+git switch experimental
+```
+
+To go back to the normal version: `git switch master`.
+
+**New web page (trial).** The phone page has been rebuilt: four tabs at the bottom (Home, Queue, Search, Library), dark and light themes, and download progress. It is on the `ui/mui-spa` branch (with everything from the experimental version) and not merged yet:
+
+```bash
+git switch ui/mui-spa
+```
+
+Button names in this guide are those of the new page. `master` and `experimental` still have the old page; where names differ, the old ones are given too.
+
 ---
 
 ## Step 3. Create the venv and install the add-ons
@@ -188,7 +204,7 @@ python -m pip install --upgrade pip
 ```
 
 ```bash
-pip install flask==2.3.1 flask-sock flask-paginate==2021.10.29 pygame==2.5.2 numpy==1.26.4 pydub psutil qrcode pillow pykakasi pinyin unidecode arabic-reshaper python-bidi yt-dlp requests lingua-language-detector
+pip install flask==2.3.1 flask-sock pygame==2.5.2 numpy==1.26.4 pydub psutil qrcode pillow pykakasi pinyin unidecode arabic-reshaper python-bidi yt-dlp requests lingua-language-detector
 ```
 
 This took about a minute on the test machine.
@@ -209,9 +225,15 @@ python app.py -w
 
 The karaoke screen shows a QR code and an address such as `http://192.168.1.23:5000`.
 
+- If port 5000 is already used by another program (on a Mac usually AirPlay Receiver), the program moves to the next free ports by itself, and the QR code shows the new address.
+
 1. Connect your phone to the **same Wi-Fi** as the computer.
 2. Scan the QR code, or type the address into the phone's browser.
-3. Search for a song (for example "song name karaoke"), download it and add it to the queue.
+3. The first time, enter your name (it is shown next to the songs you add).
+4. Go to **Search** and type a song or singer. Songs already in your library come first: tap one to add it to the queue.
+5. If it isn't in your library, tap **Search YouTube for …**, then tap a result. It downloads and joins the queue by itself. You can also paste a link from YouTube or another site (for example Bilibili).
+
+On the old page (`master`, `experimental`): search for "song name karaoke" on the search page, download it and add it to the queue. To paste a link, open **Advanced**.
 
 To stop the program, go back to the terminal and press `Ctrl` + `C`.
 
@@ -232,6 +254,27 @@ The computer's firewall may be blocking it.
   ```
 - **Windows**: when Windows asks whether Python may use the network, allow **private networks**.
 
+### YouTube asks to "confirm you're not a bot"
+
+On some networks (work, school, shared Wi-Fi) YouTube refuses downloads, or only gives low quality without subtitles.
+
+**Install the PO token service first (bgutil, no account needed).** It makes the "proof of origin" (PO) tokens YouTube asks for, the way a browser does, so downloads are refused less often and subtitles come through. It cannot guarantee that YouTube never refuses. It needs git and Node.js 22 or newer. In the program folder, run once:
+
+```
+python scripts/setup_bgutil.py
+```
+
+(With a virtual environment, use its python.) From then on the karaoke starts the service by itself and prints `PO token provider: bgutil ... started`. Add `--no-pot` to leave it off.
+
+#### Still refused: use your browser's sign-in (cookies)
+
+**This is experimental and off by default.** YouTube may restrict an account that downloads a lot, so use a spare account.
+
+- Sign in to YouTube in your browser and start with `-c chrome` or `-c firefox` (`-c auto` picks by system: Chrome on a Mac, or Firefox or Safari if there is no Chrome).
+- At startup it prints a line `YouTube sign-in: ...`. `signed in to YouTube: yes` means it works.
+- **Mac**: give the app you start the karaoke from (e.g. Terminal) Full Disk Access: System Settings → Privacy & Security → Full Disk Access, turn it on, then quit and reopen Terminal. On the first download the Mac asks about "Chrome Safe Storage": choose **Always Allow**.
+- You can use a cookies.txt file instead (`-c path/to/file.txt`). Sign in to YouTube in a **private window**, export on the YouTube page, then close the private window right away. A file exported from a normal window stops working after two or three songs. The file is your sign-in: don't share it.
+
 ---
 
 ## Step 5 (optional). Vocal removal
@@ -250,10 +293,16 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 **Computers with an NVIDIA card:** use the selector at <https://pytorch.org/get-started/locally/> (choose Pip, Python and your CUDA version) and run the command it shows.
 
+**Macs (both Apple Silicon M1/M2/M3/M4 and Intel):** use the normal version instead of the CPU line above. On Apple Silicon it can also use the Mac's graphics chip (Step 5e).
+
+```bash
+pip install torch
+```
+
 Then, for everyone:
 
 ```bash
-pip install librosa==0.10.0 soundfile tqdm
+pip install librosa==0.10.2.post1 soundfile tqdm
 ```
 
 On the test machine these two steps took under a minute together.
@@ -279,7 +328,7 @@ Note: it works through **every song already in the folder**. With a big library 
 
 ### 5c. Turning it off and on
 
-On the phone, open the **Information** page (the gear icon). Under **Advanced Control Options** there is a switch, **Background vocal splitting**:
+On the phone, open **Settings** (the gear icon at the top). The **Vocal removal** card has a switch, **Vocal Splitter** (on the old page, `master` and `experimental`: the **Information** page, **Advanced Control Options**, **Background vocal splitting**):
 
 - **Off**: the vocal remover stops and leaves your songs alone. Instrumental and vocal tracks that are already finished **can still be played**.
 - **On**: it starts again where it left off.
@@ -294,7 +343,7 @@ python app.py -w --no-vocal
 
 **Songs it cannot process** (a damaged download, or a file that isn't really audio or video) are skipped and written down in a hidden file called `.vocal_failed.json` in the song folder. They are not tried again unless the file changes, for example when you download the song again.
 
-**What is it doing right now?** Its messages go to a log file: `/dev/shm/vocal_splitter.log` on Linux, or `vocal_splitter.log` in your temporary folder on Windows and macOS. The Info page also shows whether the vocal remover is running.
+**What is it doing right now?** Its messages go to a log file: `/dev/shm/vocal_splitter.log` on Linux, or `vocal_splitter.log` in your temporary folder on Windows and macOS. The **Vocal removal** card in Settings also shows whether the vocal remover is running, with a **Restart** button if it stopped.
 
 You can still run it by hand in a second terminal (with the venv active), for example to watch it work. It won't run twice on the same folder.
 
@@ -303,6 +352,44 @@ python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
 ```
 
 `--gpu -1` means "use the processor (CPU), not a graphics card". If a graphics card fails (for example, a card too old for your PyTorch version), it switches to the processor by itself.
+
+### 5d. Choosing the model (experimental version only)
+
+The experimental version and the new page (Step 2) let you choose the model: on the new page in **Settings** → **Vocal removal** → **Model**, on the old page of `experimental` in the **Information** page → **Advanced Control Options** → **Vocal splitter mode**. Only the admin sees it if you set an admin password. It applies to the whole karaoke, not to one phone.
+
+| Choice | What it does | Speed on the test laptop (CPU, 4 cores) |
+|---|---|---|
+| **HP5** (default) | Removes only the lead singer and keeps the backing vocals. Usually the nicest for karaoke. | about 2½ minutes of work per minute of song |
+| **HP2** | Removes all vocals, backing vocals included. | about the same as HP5 |
+| **HP3** | Another version that removes all vocals. Try it if HP2 leaves too much voice in a song. | about the same as HP5 |
+| **Baseline** | The model the program always had. Lighter and about 4 times faster, but leaves more of the voice. Choose it on a slow computer. | about 35 seconds per minute of song |
+| **L-R/L+R** | The old trick for MTV-style karaoke videos. No AI, instant, and only works on such videos. | instant |
+
+HP5, HP2 and HP3 come from **Ultimate Vocal Remover (UVR5)** (MIT licence). Each one is a file of about 63 MB that is not included in the download. The first time the vocal remover needs one, **it downloads it by itself** from Hugging Face (`huggingface.co/lj1995/VoiceConversionWebUI`) and checks that the file is complete. While it is downloading, the list shows "downloading ...". The files go to the `models/vr` folder of the program, or to `~/.cache/OpenHomeKaraoke/models/vr` if the program folder is read-only.
+
+If the download fails (no internet, a firewall), the vocal remover uses **Baseline** for now and tries the download again an hour later. You can also download the file yourself with a browser from <https://huggingface.co/lj1995/VoiceConversionWebUI/tree/main/uvr5_weights> and put it in `models/vr` (for example `models/vr/HP5_only_main_vocal.pth`).
+
+**What happens to songs that are already done?** Each model keeps its own results, so nothing is overwritten:
+
+- Baseline: `nonvocal/<song>.m4a` (as before)
+- HP5, HP2, HP3: `nonvocal/HP5/<song>.m4a` and so on
+- L-R/L+R: `nonvocal/.<song>.m4a` (a hidden file, as before)
+
+The same goes for the `vocal` folder. After you switch to another model, the vocal remover goes through your library again with the new model, queued songs first. Until it reaches a song, the phone plays the best result that already exists (HP5, then HP2, HP3, Baseline). Each model needs about as much disk space as the songs' audio again (128 kbit/s AAC, about 1 MB per minute per track).
+
+When running it by hand, `--model HP2` (or `HP5`, `HP3`, `baseline`, `LR`) overrides the choice in Settings.
+
+### 5e. Graphics cards: NVIDIA and Apple Silicon (experimental version only)
+
+The vocal remover picks the fastest thing it finds, in this order:
+
+1. an **NVIDIA** graphics card (CUDA), if your PyTorch supports it;
+2. the graphics chip of an **Apple Silicon Mac** (M1/M2/M3/M4; Apple calls this "MPS"), with the normal PyTorch from Step 5a;
+3. otherwise the processor (CPU).
+
+The log file (Step 5c) says which one it uses in its first line, for example `device mps`. If the graphics chip runs out of memory or can't do something, the vocal remover switches to the processor by itself and carries on with the same song. A few calculations that Apple's chip doesn't support are done on the processor automatically.
+
+> **Not tested on a real Mac.** The Apple Silicon path was only tested with a simulation on a Linux computer (the program believed it had an Apple chip). Whether it is actually faster than the CPU, and by how much, is not known yet. If it causes problems, start the karaoke as usual and run the vocal remover on the processor: `python app.py -w --no-vocal`, then in a second terminal `python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1`.
 
 ---
 
@@ -355,10 +442,16 @@ Install VLC (Step 1). If VLC is in an unusual place, tell the program where: `py
 This happened in the original project and is fixed in this fork. Run `git pull` to make sure you have the latest version.
 
 **A song is skipped with a red "Cannot play" message.**
-The file is damaged or isn't a real video or audio file. Delete it from the phone page and download it again.
+The file is damaged or isn't a real video or audio file. Delete it in **Library** (the ⋮ button next to the song, admin only; **Browse** on the old page) and download it again.
 
 **The phone page opens but songs won't download.**
-Update the YouTube downloader: `pip install -U yt-dlp`.
+- First update the downloader: `pip install -U yt-dlp` (on the new page also **Settings** → **Update download tool**).
+- The new page shows download progress. Slow sites can take several minutes. If a site keeps refusing, "Download failed" appears within about a minute, and you can tap again to retry.
+- **Bilibili** sometimes refuses downloads (`HTTP Error 567` in the terminal). Trying again later may work. This happens on Bilibili's side and can't be fixed in the program. YouTube links work best.
+- Only sound or only picture after a download: ffmpeg is missing, so video and sound could not be joined. Install ffmpeg (Step 1) and download the song again.
+
+**The model list says "not downloaded yet" and it stays that way (experimental version).**
+The vocal remover downloads the model when it starts working, so it must be running: check that PyTorch is installed and the switch is on (Step 5c). If the log file says the download failed, download the file yourself (Step 5d).
 
 **Vocal removal never finishes a song.**
-Check that PyTorch is installed (Step 5a) and that the **Background vocal splitting** switch on the Info page is on (Step 5c). Then look at the log file named in Step 5c: it shows which song it is working on, or why it is not running (for example "Python package(s) not installed: torch").
+Check that PyTorch is installed (Step 5a) and that the **Vocal Splitter** switch in Settings is on (Step 5c). Then look at the log file named in Step 5c: it shows which song it is working on, or why it is not running (for example "Python package(s) not installed: torch").

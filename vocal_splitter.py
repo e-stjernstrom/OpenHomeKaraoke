@@ -2,8 +2,13 @@
 """Background vocal splitter for OpenHomeKaraoke.
 
 Goes through the song library one file at a time and writes an instrumental track to
-<songs>/nonvocal/<song>.m4a and a vocal track to <songs>/vocal/<song>.m4a (whichever of the two
-folders exist). With the stereo (L-R/L+R) method the results are named .<song>.m4a instead.
+<songs>/nonvocal/ and a vocal track to <songs>/vocal/ (whichever of the two folders exist), with
+the model chosen on the Info page (see lib/vocal_models.py for the models and file names).
+The UVR VR models (HP5 by default) are downloaded the first time they are needed; if that is
+not possible, the built-in baseline model is used meanwhile.
+
+The network runs on an NVIDIA GPU (CUDA) or an Apple Silicon GPU (MPS) when one is available,
+otherwise on the CPU. Any GPU error switches to the CPU for the rest of the run.
 
 Normally started by app.py as a child process; it can also be run by hand:
 	python vocal_splitter.py -d ~/pikaraoke-songs --gpu -1
@@ -12,21 +17,24 @@ Normally started by app.py as a child process; it can also be run by hand:
 import os, sys, time, json, argparse, subprocess, traceback
 from urllib.parse import quote
 
+# On Apple Silicon, run the few operations MPS does not support on the CPU instead of failing.
+# Must be set before torch is imported.
+os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+
 import numpy as np
 import requests
 import soundfile as sf
 import torch
-import librosa
 
-from lib import dataset
-from lib import nets
-from lib import spec_utils
+from lib.separation import BaselineBackend, VRBackend
 from lib.vocal_dirs import ensure_vocal_dirs, is_split_disabled
+from lib import vocal_models as vm
+from lib import split_status
 from constants import media_types
 
 # ffmpeg cannot decode .zip (mp3+cdg bundles), so those are not split
 SPLITTABLE_TYPES = [t for t in media_types if t != '.zip']
-FAILED_FILE = '.vocal_failed.json'
+FAILED_FILE = split_status.FAILED_FILE
 LOCK_FILE = '.vocal_splitter.lock'
 
 
@@ -36,88 +44,6 @@ class Cancelled(Exception):
 
 class DecodeError(Exception):
 	"""ffmpeg could not turn the song into a wav file (damaged or not a media file)."""
-
-
-class Separator(object):
-
-	def __init__(self, model, device=None, batchsize=1, cropsize=256, postprocess=False):
-		self.model = model
-		self.offset = model.offset
-		self.device = device
-		self.batchsize = batchsize
-		self.cropsize = cropsize
-		self.postprocess = postprocess
-
-	def _postprocess(self, X_spec, mask):
-		if self.postprocess:
-			mask_mag = np.abs(mask)
-			mask_mag = spec_utils.merge_artifacts(mask_mag)
-			mask = mask_mag * np.exp(1.j * np.angle(mask))
-
-		y_spec = X_spec * mask
-		v_spec = X_spec - y_spec
-
-		return y_spec, v_spec
-
-	def _separate(self, X_spec_pad, roi_size):
-		patches = (X_spec_pad.shape[2] - 2 * self.offset) // roi_size
-
-		self.model.eval()
-		with torch.no_grad():
-			mask_list = []
-			# To reduce the overhead, dataloader is not used. Batches are cut out of the
-			# spectrogram on the fly instead of copying every crop up front.
-			for i in range(0, patches, self.batchsize):
-				X_batch = np.asarray([X_spec_pad[:, :, j * roi_size: j * roi_size + self.cropsize]
-				                      for j in range(i, min(i + self.batchsize, patches))])
-				X_batch = torch.from_numpy(X_batch).to(self.device)
-
-				mask = self.model.predict_mask(X_batch)
-
-				mask = mask.detach().cpu().numpy()
-				mask = np.concatenate(mask, axis=2)
-				mask_list.append(mask)
-
-			mask = np.concatenate(mask_list, axis=2)
-
-		return mask
-
-	def separate(self, X_spec, scale=None):
-		"""scale: the value the input is normalised by. Defaults to this spectrogram's own peak;
-		pass the whole song's peak when separating it segment by segment."""
-		n_frame = X_spec.shape[2]
-		pad_l, pad_r, roi_size = dataset.make_padding(n_frame, self.cropsize, self.offset)
-		X_spec_pad = np.pad(X_spec, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-		X_spec_pad /= (scale or np.abs(X_spec).max() or 1.0)
-
-		mask = self._separate(X_spec_pad, roi_size)
-		mask = mask[:, :, :n_frame]
-
-		y_spec, v_spec = self._postprocess(X_spec, mask)
-
-		return y_spec, v_spec
-
-	def separate_tta(self, X_spec, scale=None):
-		n_frame = X_spec.shape[2]
-		scale = scale or np.abs(X_spec).max() or 1.0
-		pad_l, pad_r, roi_size = dataset.make_padding(n_frame, self.cropsize, self.offset)
-		X_spec_pad = np.pad(X_spec, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-		X_spec_pad /= scale
-
-		mask = self._separate(X_spec_pad, roi_size)
-
-		pad_l += roi_size // 2
-		pad_r += roi_size // 2
-		X_spec_pad = np.pad(X_spec, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-		X_spec_pad /= scale
-
-		mask_tta = self._separate(X_spec_pad, roi_size)
-		mask_tta = mask_tta[:, :, roi_size // 2:]
-		mask = (mask[:, :, :n_frame] + mask_tta[:, :, :n_frame]) * 0.5
-
-		y_spec, v_spec = self._postprocess(X_spec, mask)
-
-		return y_spec, v_spec
 
 
 # ---------------------------------------------------------------------------- audio in / out
@@ -173,7 +99,7 @@ def read_stereo(f, start, stop):
 	return np.ascontiguousarray(x[:2])
 
 
-def split_vocal_by_stereo(in_wav, outputs, args, check=lambda: None):
+def split_vocal_by_stereo(in_wav, outputs, args, check=lambda fraction=None: None):
 	"""Traditional karaoke trick for MTV audio: L-R is the instruments, L+R the vocals (mono results).
 	outputs: {'nonvocal': path, 'vocal': path}, either may be missing."""
 	with sf.SoundFile(in_wav) as f:
@@ -183,7 +109,7 @@ def split_vocal_by_stereo(in_wav, outputs, args, check=lambda: None):
 		try:
 			block = 30 * f.samplerate
 			for start in range(0, f.frames, block):
-				check()
+				check(start / f.frames)
 				x = read_stereo(f, start, min(f.frames, start + block))
 				if 'nonvocal' in writers:
 					writers['nonvocal'].write(x[0] - x[1])
@@ -197,27 +123,22 @@ def split_vocal_by_stereo(in_wav, outputs, args, check=lambda: None):
 			raise
 
 
-def split_vocal_by_dnn(in_wav, outputs, args, check=lambda: None):
-	"""Separate a song with the DNN, segment by segment, so memory use does not grow with song length.
+def split_vocal_by_dnn(in_wav, outputs, backend, segment=60, check=lambda fraction=None: None):
+	"""Separate a song with a neural-network backend (lib/separation.py), segment by segment, so
+	memory use does not grow with song length.
 
-	Each segment is separated together with `margin` samples of context on both sides (more than
-	the model's own context of model.offset frames), and only its middle part is kept. Neighbouring
-	segments overlap by `xfade` samples and are cross-faded. The input is normalised by the peak of
-	the whole song (found in a first pass), as in the original whole-song version.
+	Each segment is separated together with backend.margin samples of context on both sides and
+	only its middle part is kept. Segment starts and margins are multiples of backend.unit, the
+	model's window grid, so every segment uses the same grid as a whole-song run and gives the same
+	result. Neighbouring segments overlap by backend.xfade samples and are cross-faded. The input
+	is normalised by the peak of the whole song (found in a first pass), as in a whole-song run.
 	outputs: {'nonvocal': path, 'vocal': path}, either may be missing."""
-	hop, n_fft = args.hop_length, args.n_fft
 	with sf.SoundFile(in_wav) as f:
 		sr, n = f.samplerate, f.frames
 		if n == 0:
 			raise ValueError('the file has no audio')
-		# The model works on windows of roi_size frames, and its output depends on where that window
-		# grid falls. Segment starts and margins are multiples of the grid, so every segment uses the
-		# same grid as a whole-song run and gives the same result (apart from the discarded margins).
-		roi_size = dataset.make_padding(1, args.cropsize, args.model.offset)[2]
-		unit = roi_size * hop
-		seg = max(1, round(args.segment * sr / unit)) * unit
-		margin = unit * int(np.ceil((args.model.offset + 4) / roi_size))
-		xfade = 4 * hop
+		unit, margin, xfade = backend.unit, backend.margin, backend.xfade
+		seg = max(1, round(segment * sr / unit)) * unit
 
 		starts = list(range(0, n, seg))
 		if len(starts) > 1 and n - starts[-1] < 2 * xfade:
@@ -231,22 +152,20 @@ def split_vocal_by_dnn(in_wav, outputs, args, check=lambda: None):
 			scale = 0.0
 			for a, b in windows:
 				check()
-				scale = max(scale, float(np.abs(spec_utils.wave_to_spectrogram(read_stereo(f, a, b), hop, n_fft)).max()))
+				scale = max(scale, backend.peak(read_stereo(f, a, b)))
 			print('done', flush=True)
 
-		sp = Separator(args.model, args.device, args.batchsize, args.cropsize, args.postprocess)
 		writers = {k: M4AWriter(p, sr, 2) for k, p in outputs.items()}
 		tails = {}
 		try:
 			for k, ((s, e), (a, b)) in enumerate(zip(bounds, windows)):
-				check()
-				X_spec = spec_utils.wave_to_spectrogram(read_stereo(f, a, b), hop, n_fft)
-				y_spec, v_spec = (sp.separate_tta if args.tta else sp.separate)(X_spec, scale)
+				check(k / len(bounds))
+				inst, voc = backend.separate(read_stereo(f, a, b), scale)
 				keep = slice(s - a, min(e + xfade, n) - a)
-				for key, spec in (('nonvocal', y_spec), ('vocal', v_spec)):
+				for key, wave in (('nonvocal', inst), ('vocal', voc)):
 					if key not in writers:
 						continue
-					wave = np.asarray([librosa.istft(spec[c], hop_length=hop, length=b - a) for c in range(2)])[:, keep]
+					wave = np.array(wave[:, keep], dtype=np.float32)
 					if key in tails:
 						t = tails.pop(key)
 						w = np.linspace(0.0, 1.0, t.shape[1], endpoint=False, dtype=np.float32)
@@ -264,16 +183,15 @@ def split_vocal_by_dnn(in_wav, outputs, args, check=lambda: None):
 				w.abort()
 			raise
 
-
 # ---------------------------------------------------------------------------- library bookkeeping
 
 song_path = ''
 last_completed = ''
-use_DNN = True
+selected_model = vm.DEFAULT_MODEL  # chosen on the Info page
+DOWNLOAD_RETRY = 3600  # seconds to wait before trying a failed weights download again
 
 
-def method_key(bn):
-	return ('dnn:' if use_DNN else 'stereo:') + bn
+method_key = split_status.method_key
 
 
 def file_signature(bn):
@@ -289,13 +207,13 @@ def load_failed():
 		return {}
 
 
-def mark_failed(bn, err):
+def mark_failed(model, bn, err):
 	"""Remember that this file could not be split, so it is not retried (and does not crash the
 	splitter again) until the file changes, e.g. after it is downloaded again."""
 	failed = load_failed()
 	try:
-		failed[method_key(bn)] = {'signature': file_signature(bn), 'error': f'{type(err).__name__}: {err}'[:300],
-		                          'time': time.strftime('%Y-%m-%d %H:%M:%S')}
+		failed[method_key(model, bn)] = {'signature': file_signature(bn), 'error': f'{type(err).__name__}: {err}'[:300],
+		                                 'time': time.strftime('%Y-%m-%d %H:%M:%S')}
 		path = os.path.join(song_path, FAILED_FILE)
 		with open(path + '.tmp', 'w', encoding='utf-8') as fp:
 			json.dump(failed, fp, ensure_ascii=False, indent=1)
@@ -308,25 +226,33 @@ def server_url(args):
 	return f"{'https' if args.ssl else 'http'}://localhost:{args.port}"
 
 
-def get_next_file(args):
-	global song_path, use_DNN
+def poll_server(args):
+	"""Ask OpenHomeKaraoke for the song folder, the play queue and the selected model.
+	Without a running OpenHomeKaraoke, use --download-path and the model saved in the song folder."""
+	global song_path, selected_model
 	try:
 		obj = requests.get(f'{server_url(args)}/get_vocal_todo_list/{args.device.type}/{quote(last_completed, safe="")}',
 		                   timeout=10, verify=False).json()
 		song_path = obj['download_path'].rstrip('/\\')
-		use_DNN = obj['use_DNN']
+		if 'model' in obj:
+			selected_model = vm.normalize(obj['model'])
+		else:  # older app.py
+			selected_model = vm.DEFAULT_MODEL if obj.get('use_DNN', True) else 'LR'
 	except Exception:
 		if not song_path:
 			print('OpenHomeKaraoke is not running and --download-path is not specified, exiting ...')
 			sys.exit()
 		obj = {'queue': []}
+		selected_model = vm.get_selected(song_path)
+	if args.model:
+		selected_model = vm.normalize(args.model)
+	return obj
 
-	if is_split_disabled(song_path):
-		return None
-	dirs = [d for d in ('nonvocal', 'vocal') if os.path.isdir(os.path.join(song_path, d))]
+
+def get_next_file(obj, model):
+	dirs = [d for d in vm.SUBDIRS if os.path.isdir(os.path.join(song_path, d))]
 	if not dirs:
 		return None
-	prefix = '' if use_DNN else '.'
 	failed = load_failed()
 
 	def needs_work(bn):
@@ -334,9 +260,9 @@ def get_next_file(args):
 			return False
 		if not os.path.isfile(os.path.join(song_path, bn)):
 			return False
-		if all(os.path.isfile(os.path.join(song_path, d, f'{prefix}{bn}.m4a')) for d in dirs):
+		if all(os.path.isfile(vm.result_path(song_path, d, model, bn)) for d in dirs):
 			return False
-		rec = failed.get(method_key(bn))
+		rec = failed.get(method_key(model, bn))
 		return not (rec and rec.get('signature') == file_signature(bn))
 
 	# songs that are playing or queued first, then the rest of the library
@@ -344,6 +270,94 @@ def get_next_file(args):
 		if needs_work(bn):
 			return bn
 	return None
+
+
+# ---------------------------------------------------------------------------- models and devices
+
+def pick_device(args):
+	"""CUDA if available, else Apple Silicon (MPS), else CPU. --gpu -1 forces the CPU,
+	--gpu N picks CUDA device N."""
+	if args.gpu is not None and args.gpu < 0:
+		return torch.device('cpu')
+	if torch.cuda.is_available():
+		return torch.device(f'cuda:{0 if args.gpu is None else args.gpu}')
+	mps = getattr(torch.backends, 'mps', None)
+	if args.gpu is None and mps is not None and mps.is_available():
+		return torch.device('mps')
+	return torch.device('cpu')
+
+
+def empty_gpu_cache():
+	for mod in ('cuda', 'mps'):
+		try:
+			getattr(torch, mod).empty_cache()
+		except Exception:
+			pass
+
+
+class Models(object):
+	"""Loads separation backends when they are first needed (downloading VR weights if missing)
+	and keeps at most one VR model in memory."""
+
+	def __init__(self, args):
+		self.args = args
+		self.loaded = {}
+		self.download_failed = {}  # model -> time of the last failed download
+
+	def effective(self, model, check):
+		"""The model to split with now: the selected one, or baseline while the selected VR model
+		cannot be downloaded."""
+		if model not in vm.VR_MODELS or vm.find_weights(model):
+			return model
+		if time.time() - self.download_failed.get(model, 0) < DOWNLOAD_RETRY:
+			return 'baseline'
+		try:
+			vm.download_weights(model, self.args.model_url, check, log=lambda s: print(s, flush=True))
+			return model
+		except Cancelled:
+			raise
+		except Exception as e:
+			self.download_failed[model] = time.time()
+			print(f'Could not download the {model} model ({type(e).__name__}: {e}); using the baseline model '
+			      f'for now, will try again in {DOWNLOAD_RETRY // 60} minutes.', flush=True)
+			return 'baseline'
+
+	def _load(self, model, device):
+		a = self.args
+		if model == 'baseline':
+			return BaselineBackend(a.pretrained_model, device, a.sr, a.n_fft, a.hop_length, a.cropsize, a.batchsize,
+			                       a.postprocess, a.tta)
+		info = vm.VR_MODELS[model]
+		return VRBackend(model, vm.find_weights(model), device, info['swap'], a.aggressiveness, a.vr_batchsize, a.tta)
+
+	def get(self, model):
+		if model not in self.loaded:
+			for m in [m for m in self.loaded if m in vm.VR_MODELS]:
+				del self.loaded[m]  # one VR model at a time (each uses a few hundred MB)
+			empty_gpu_cache()
+			try:
+				self.loaded[model] = self._load(model, self.args.device)
+			except Exception as e:
+				if self.args.device.type == 'cpu':
+					raise
+				print(f'Cannot use the {self.args.device.type.upper()} for {model} ({e}), using the CPU ...', flush=True)
+				self.args.device = torch.device('cpu')
+				self.loaded = {m: b.to(self.args.device) for m, b in self.loaded.items()}
+				self.loaded[model] = self._load(model, self.args.device)
+		return self.loaded[model]
+
+	def fall_back_to_cpu(self, err):
+		"""A GPU error (old GPU not supported by this PyTorch build, out of GPU memory, an operation
+		MPS cannot do, driver problem, ...) should not stop vocal splitting: continue on the CPU for
+		the rest of this run."""
+		print(f'{self.args.device.type.upper()} error, switching to CPU: {err}', flush=True)
+		self.args.device = torch.device('cpu')
+		for m in list(self.loaded):
+			try:
+				self.loaded[m] = self.loaded[m].to(self.args.device)
+			except Exception:
+				del self.loaded[m]  # reloaded on the CPU when needed
+		empty_gpu_cache()
 
 
 # ---------------------------------------------------------------------------- process control
@@ -394,46 +408,34 @@ def lower_priority(nice):
 		print(f'Could not lower the process priority: {e}', flush=True)
 
 
-def load_model(args, device):
-	model = nets.CascadedNet(args.n_fft, args.hop_length, 32, 128, True)
-	try:
-		state = torch.load(args.pretrained_model, map_location='cpu', weights_only=True)
-	except TypeError:  # torch < 1.13 has no weights_only
-		state = torch.load(args.pretrained_model, map_location='cpu')
-	model.load_state_dict(state)
-	return model.to(device)
-
-
-def fall_back_to_cpu(args, err):
-	"""A CUDA error (old GPU not supported by this PyTorch build, out of GPU memory, driver problem, ...)
-	should not stop vocal splitting: continue on the CPU for the rest of this run."""
-	print(f'GPU error, switching to CPU: {err}', flush=True)
-	args.device = torch.device('cpu')
-	try:
-		args.model = args.model.to(args.device)
-	except Exception:
-		args.model = load_model(args, args.device)
-	try:
-		torch.cuda.empty_cache()
-	except Exception:
-		pass
-
-
-def process_file(bn, args, in_wav, check):
-	dirs = [d for d in ('nonvocal', 'vocal') if os.path.isdir(os.path.join(song_path, d))]
-	prefix = '' if use_DNN else '.'
+def process_file(bn, model, args, models, in_wav, check):
+	dirs = [d for d in vm.SUBDIRS if os.path.isdir(os.path.join(song_path, d))]
 	partial = {d: os.path.join(song_path, d, f'.partial.{os.getpid()}.m4a') for d in dirs}
-	final = {d: os.path.join(song_path, d, f'{prefix}{bn}.m4a') for d in dirs}
-	method = f'DNN on {args.device.type.upper()}' if use_DNN else 'stereo L-R/L+R'
+	final = {d: vm.result_path(song_path, d, model, bn) for d in dirs}
+	backend = None if model == 'LR' else models.get(model)
+	method = 'stereo L-R/L+R' if backend is None else f'{model} model on {args.device.type.upper()}'
 	print(f'Start processing {bn} ({method}):', flush=True)
 	t0 = time.time()
+	split_status.write_progress(song_path, bn, model, 0)
+
+	def check_and_report(fraction=None):
+		# tells the web page how far this song is (lib/split_status.py)
+		if fraction is not None:
+			split_status.write_progress(song_path, bn, model, fraction)
+		check()
+
 	try:
-		ffm_video2wav(os.path.join(song_path, bn), in_wav, args.sr)
+		ffm_video2wav(os.path.join(song_path, bn), in_wav, args.sr if backend is None else backend.sr)
 		duration = sf.info(in_wav).duration
-		(split_vocal_by_dnn if use_DNN else split_vocal_by_stereo)(in_wav, partial, args, check)
+		if backend is None:
+			split_vocal_by_stereo(in_wav, partial, args, check_and_report)
+		else:
+			split_vocal_by_dnn(in_wav, partial, backend, args.segment, check_and_report)
 		for d in dirs:
+			os.makedirs(os.path.dirname(final[d]), exist_ok=True)
 			os.replace(partial[d], final[d])
 	finally:
+		split_status.clear_progress(song_path)
 		for p in list(partial.values()) + [in_wav]:
 			if os.path.exists(p):
 				os.remove(p)
@@ -450,12 +452,18 @@ def main(argv):
 	p.add_argument('--port', type = int, default = 5000, help = 'HTTP port of OpenHomeKaraoke (default: 5000)')
 	p.add_argument('--ssl', action = 'store_true', help = 'OpenHomeKaraoke runs with --ssl (HTTPS)')
 	p.add_argument('--parent-pid', type = int, default = 0, help = 'Exit when this process (app.py) is gone')
-	p.add_argument('--gpu', '-g', type = int, help = 'CUDA device ID for GPU inference, set to -1 to force to use CPU (default will try to use GPU if available)', default = None)
+	p.add_argument('--model', '-m', choices = vm.ALL_MODELS, default = None,
+	               help = 'Use this model instead of the one chosen on the Info page')
+	p.add_argument('--gpu', '-g', type = int, help = 'CUDA device ID for GPU inference, set to -1 to force to use CPU '
+	               '(default: use an NVIDIA (CUDA) or Apple Silicon (MPS) GPU if available)', default = None)
 	p.add_argument('--threads', type = int, default = max(1, (os.cpu_count() or 2) // 2),
 	               help = 'CPU threads for inference (default: half of the CPU cores, so that video playback stays smooth)')
 	p.add_argument('--nice', type = int, default = 10, help = 'Lower the process priority by this much (default: 10, 0 = do not change)')
 	p.add_argument('--segment', type = float, default = 60, help = 'Seconds of audio separated at a time; limits memory use (default: 60)')
-	p.add_argument('--pretrained_model', '-P', type = str, default = 'models/baseline.pth')
+	p.add_argument('--pretrained_model', '-P', type = str, default = 'models/baseline.pth', help = 'Weights of the baseline model')
+	p.add_argument('--aggressiveness', type = int, default = 10, help = 'VR models: how strongly vocals are removed, 0-20 (default: 10, as in UVR)')
+	p.add_argument('--vr-batchsize', type = int, default = 1, help = 'VR models: windows per batch (default: 1, uses the least memory)')
+	p.add_argument('--model-url', default = vm.WEIGHTS_URL, help = argparse.SUPPRESS)
 	p.add_argument('--sr', '-r', type = int, default = 44100)
 	p.add_argument('--n_fft', '-f', type = int, default = 2048)
 	p.add_argument('--hop_length', '-H', type = int, default = 1024)
@@ -474,23 +482,12 @@ def main(argv):
 
 	lower_priority(args.nice)
 	torch.set_num_threads(max(1, args.threads))
-
-	# Determine the GPU device and load the DNN model
-	print('Loading vocal-splitter model ...', end = ' ', flush = True)
-	args.device = torch.device('cpu')
-	args.model = load_model(args, args.device)
-	if (args.gpu is None or args.gpu >= 0) and torch.cuda.is_available():
-		try:
-			gpu = torch.device(f'cuda:{0 if args.gpu is None else args.gpu}')
-			args.model = args.model.to(gpu)
-			args.device = gpu
-		except Exception as e:
-			print(f'cannot use the GPU ({e}), using CPU ...', end = ' ', flush = True)
-			args.model = load_model(args, args.device)
-	print(f'done (device: {args.device}, CPU threads: {torch.get_num_threads()})', flush = True)
+	args.device = pick_device(args)
+	print(f'Vocal splitter: device {args.device}, CPU threads {torch.get_num_threads()}', flush = True)
+	models = Models(args)
 
 	# set song_path global variable from local server
-	get_next_file(args)
+	poll_server(args)
 	ensure_vocal_dirs(song_path)
 	lock = acquire_lock(song_path)
 	if lock is None:
@@ -513,25 +510,33 @@ def main(argv):
 		if not parent_alive(args.parent_pid):
 			print('OpenHomeKaraoke has exited, exiting ...', flush = True)
 			return
-		next_file = get_next_file(args)
+		obj = poll_server(args)
+		if is_split_disabled(song_path):
+			time.sleep(2)
+			continue
+		try:
+			model = models.effective(selected_model, check)
+		except Cancelled:
+			continue
+		next_file = get_next_file(obj, model)
 		if not next_file:
 			time.sleep(2)
 			continue
 
 		try:
-			process_file(next_file, args, in_wav, check)
+			process_file(next_file, model, args, models, in_wav, check)
 			last_completed = next_file
 		except Cancelled:
 			print('Vocal splitting was switched off, stopped.', flush = True)
 		except KeyboardInterrupt:
 			raise
 		except Exception as e:
-			if use_DNN and args.device.type == 'cuda' and not isinstance(e, DecodeError):
-				fall_back_to_cpu(args, e)
+			if model != 'LR' and args.device.type != 'cpu' and not isinstance(e, DecodeError):
+				models.fall_back_to_cpu(e)
 				continue  # retry the same song on the CPU
 			traceback.print_exc()
 			print(f'Skipping {next_file}: {e}', flush = True)
-			mark_failed(next_file, e)
+			mark_failed(model, next_file, e)
 
 
 if __name__ == '__main__':

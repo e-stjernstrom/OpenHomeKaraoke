@@ -6,6 +6,7 @@ pinyin
 wheel
 pydub
 yt-dlp
+bgutil-ytdlp-pot-provider==2.0.2
 tempora==1.14.0
 jaraco.functools==2.0
 six
@@ -20,12 +21,11 @@ unidecode
 requests
 arabic-reshaper
 python-bidi
-flask-paginate==2021.10.29
 flask==2.3.1
 numpy==1.26.4
 torch>=1.5.1
 tqdm>=4.30
-librosa==0.10.0
+librosa==0.10.2.post1
 pip
 soundfile
 spec_utils

@@ -67,6 +67,8 @@ Step-by-step, plain-language guides using a Python venv (no conda): [English](do
 - Install pip dependencies, in the conda environment, cd into the project folder and run `pip install -r requirements.txt`
 - Create song download directory `$HOME/pikaraoke-songs` (by default) or specify it on the command line.
 - The `nonvocal` and `vocal` sub-folders inside the song download directory (e.g. `$HOME/pikaraoke-songs/nonvocal` and `$HOME/pikaraoke-songs/vocal` by default) enable automatic extraction of instrumental and vocal tracks in the background. They are created automatically the first time a song directory is used (a hidden `.vocal_dirs_initialized` file records this). The vocal splitter starts automatically with `app.py` on all platforms when PyTorch is installed; turn it off with the "Background vocal splitting" switch on the Info page (finished tracks still play), or never start it with `--no-vocal`.
+- YouTube downloads work better with a PO token provider: run `python scripts/setup_bgutil.py` once (needs git and Node.js 22+). `app.py` then starts the bgutil server (127.0.0.1:4416) by itself; `--no-pot` leaves it off. Signing in with browser cookies (`-c`) is experimental and off by default, since YouTube may restrict accounts that download a lot.
+- **Experimental branch (`experimental`):** the Info page lets the admin choose the separation model: UVR5's VR models HP5 (default, removes the lead vocal only), HP2 or HP3 (all vocals), the original baseline model (lighter, for slow CPUs) or the L-R/L+R trick. The HP models (about 63 MB each, MIT licensed, from `huggingface.co/lj1995/VoiceConversionWebUI`) are downloaded automatically the first time they are needed; until then the baseline model is used. Results are stored per model (`nonvocal/HP5/<song>.m4a`, ...) and playback falls back to the best existing result. The splitter uses an NVIDIA GPU (CUDA) or an Apple Silicon GPU (MPS, so far tested only in simulation) when available. See the deployment guides, steps 5d and 5e.
 - Make sure `VLC` (https://www.videolan.org/) and `ffmpeg` (https://ffmpeg.org/download.html) are installed, and their executables are in the execution PATH environment variable.
 - For GPU-accelerated speech recognition, you need to install the cloud-side server on any CUDA-enabled GPU machine. Copy over the entire `cloud` folder from https://github.com/xuancong84/OpenSmartLight/tree/main/tools/cloud, setup conda environment correctly and run the `cloud.py`, then pass the cloud server URL as argument to `app.py`.
 - GPU-accelerated vocal splitter can run either locally or via cloud (see previous point with option `-vs`). If your local machine is powerful enough, with a fast CPU and a decent NVidia GPU with >=8GB GPU memory, you can host the cloud on the same local machine.
@@ -161,8 +163,9 @@ optional arguments:
   --show-overlay        Show overlay on top of video with OpenHomeKaraoke QR code and IP
   -w, --windowed        Start OpenHomeKaraoke in windowed mode
   -c BROWSER_COOKIES, --browser-cookies BROWSER_COOKIES
-                        YouTube downloader can use browser cookies from the specified path (see the --cookies-from-browser option of yt-dlp), it can also be
-                        auto (default): automatically determine based on OS; none: do not use any browser cookies
+                        EXPERIMENTAL, off by default: sign in to YouTube with your browser's cookies (a browser name such as chrome or firefox, see the
+                        --cookies-from-browser option of yt-dlp, or a cookies.txt file; auto: pick by OS). YouTube may restrict an account that downloads
+                        a lot, so use a spare account. none (default): no cookies
   --cloud, -c CLOUD_URL cloud URL for DNN-based vocal splitter and speech recognition
   --admin-password ADMIN_PASSWORD
                         Administrator password, for locking down certain features of the web UI such as queue editing, player controls, song editing, and
@@ -181,31 +184,34 @@ Make sure you are connected to the same network/wifi. You can then enter the sho
 
 ## Web UI
 
+One page for phones and computers (React + Material UI), in dark or light, with the bottom bar on phones and tabs on wide screens.
+
 ### Home
 
-- View Now Playing and Next tracks
-- Access controls to repeat, pause, skip and control volume 
-- Transpose slider to change playback pitch
+- Now singing and up next, with play/pause, restart, skip, position and volume
+- Music / Mixed / Voice switch, with one line saying whether the instrumental is ready, being made (with progress) or waiting
+- Key (−/+ semitones) and speed; audio and subtitle delay under "Fine-tune"
 
 ### Queue
 
-- Edit the queue/playlist order (up and down arrow icons)
-- Delete from queue ( x icon )
-- Add random songs to the queue
-- Clear the queue
+- Drag the handle to reorder, or use ⋮ (move to top, up, down, remove with undo); admin only when an admin password is set
+- Everyone can take back their own songs
+- Add 3 random songs, clear the queue
 
-### Songs
+### Search
 
-- Add songs to the queue by searching current library on local storage (likely empty at first), search is executed autocomplete-style
-- Add new songs from the internet by using the second search box
-- Click browse to view the full library. From here you can edit files in the library (rename/delete).
+- Your library first, as you type; then search YouTube; one tap downloads a result and adds it to the queue (⋮ for subtitles and high quality)
+- Paste a link (YouTube, or another site yt-dlp supports, e.g. Bilibili) to download it, with progress; some sites refuse downloads; voice search when a speech server is set up (`--cloud`, HTTPS)
 
-### Info
+### Library
 
-- Shows the IP and QR code to share with others
-- Shows CPU / Memory / Disk Use stats
-- Allows updating the song list and youtube-dl version
-- Allows user to quit to console, shut down, or reboot system. Always shut down from here before you pull the plug on OpenHomeKaraoke!
+- All songs, filter and sort by name or newest; rename and delete (admin)
+
+### Settings (gear icon)
+
+- QR code and address to share, admin login
+- Vocal removal on/off and model, volume normalization, TV screen language, rescan the song folder
+- System info, update yt-dlp, quit / reboot / shut down. Always shut down from here before you pull the plug!
 
 ## Troubleshooting
 
@@ -286,3 +292,15 @@ Or an even easier approach, if you install this: https://github.com/jasbur/Raspi
 Pip install py-googletrans: `pip install googletrans==3.1.0a0`
 
 You must manually edit `lang/en_US` and `lang/zh_CN`, and then run `./translate-all.sh -c` to re-generate Google translations for the rest. If you just want to add a new language from Google translate, omit the `-c` option.
+
+### How to change the web page?
+The page lives in `frontend/` and is built into `static/app/`, which is committed, so users don't need Node.js. To change it, install Node.js 20.19 or newer, then:
+
+```
+cd frontend
+npm install
+npm run dev     # live preview on http://localhost:5173, talking to OpenHomeKaraoke on port 5000 (set OHK_URL for another address)
+npm run build   # type-check and write static/app/; commit the result
+```
+
+New text goes to the end of `lang/en_US` (and `lang/zh_CN`, `lang/zh_TW`), with its line number in `frontend/src/strings.ts`. Other languages fall back to English line by line.

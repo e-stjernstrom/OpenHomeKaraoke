@@ -237,3 +237,137 @@ You need to change the security setting in Firefox browser to allow microphone a
 Please open 'about:config' in a new tab and set 'media.getusermedia.insecure.enabled' and 'media.devices.insecure.enabled'.
 Cannot play "%s" (the file may be damaged). Skipped.
 Background vocal splitting (when off, existing instrumental/vocal tracks can still be played)
+HP5 – removes the lead vocal, keeps backing vocals (recommended)
+HP2 – removes all vocals
+HP3 – removes all vocals (alternative)
+Baseline – lighter and faster, for slow computers
+not downloaded yet, downloads 63 MB automatically
+downloading ...
+HP models separate better, but are several times slower without a graphics card. On a slow computer, choose Baseline.
+Each model keeps its own results. Until the chosen model reaches a song, an existing result is played.
+L-R/L+R: only for MTV-style karaoke videos (L-R = instrumental, L+R = vocals).
+Only the administrator can do this. Log in under Settings.
+Library
+Now singing
+Added by %s
+Find a song
+Up next
+Instrumental ready (%s)
+Making instrumental… %s
+Instrumental: waiting, %d songs ahead
+Instrumental: next in line
+Instrumental could not be made
+Vocal removal is off
+Vocal removal is not available on this computer
+Vocal removal stopped unexpectedly
+Turn on
+Restart
+Until then, an older result (%s) is played
+Key
+Speed
+Fine-tune
+Show subtitles
+Volume
+Original key
+Normal speed
+Move to top
+Remove
+Removed: %s
+Remove all songs from the queue and stop the current song?
+Clear
+Cancel
+Song or singer
+In your library
+Search YouTube for "%s"
+On YouTube
+Already in the queue
+Add to queue
+Downloading…
+Type a song or singer, or paste a YouTube link.
+%d songs
+Filter
+Name
+Newest
+Rename
+Delete "%s" from the library?
+Your name
+Shown next to the songs you add.
+Theme
+Dark
+Light
+Same as device
+Invite others
+On a phone in the same Wi-Fi, scan the code or open:
+Copy link
+Link copied
+Vocal removal
+Model
+Idle
+Running
+Playback
+TV screen language
+Song library
+About & troubleshooting
+Quit & power
+Administrator
+Password
+Log in
+Log out
+Starting microphone…
+Say the song name, then tap Done.
+Done
+Voice search needs the secure (HTTPS) address. Open it, accept the certificate warning once, then try again.
+Open
+Voice search is not set up on this server.
+%s free of %s
+Connection lost. Reconnecting…
+Show more
+Downloaded
+Download failed
+Update download tool (yt-dlp)
+More
+Settings
+Search by voice
+No results
+YouTube search failed. Try again, or update the download tool in Settings.
+Makes an instrumental and a vocal track for each song in the background, queue first. Music = instrumental only, Voice = vocals only.
+Logged in as administrator
+The administrator can edit the queue, rename and delete songs, and change settings.
+Device
+Changes the key without changing the speed.
+Song name
+Use the filter to find more songs.
+Volume normalized
+Please enter a name
+Too high or too low for you? Change the key.
+Only if sound, picture or lyrics are out of step.
+Subtitles inside the video
+Takes much longer to download
+Every song plays about equally loud
+Remembers delays and subtitles for each song
+Only the TV. Each phone picks its own language in the account menu (top right).
+Only needed after copying songs into the folder by hand.
+Download options
+Downloading "%s". It joins the queue when ready.
+Browse the library
+Not in your library yet
+Instrumental ready
+Picked up %s.
+%s moved to position %d.
+Moving cancelled.
+Still downloading. Long videos and slow sites can take several minutes; it gives up by itself if the connection keeps failing.
+Download failed. The site may refuse downloads or need you to be logged in; YouTube links work best.
+Subtitle languages, in order
+The first one the video has is shown. If it has none of them, its own language is used.
+Move up
+Move down
+YouTube won't let this karaoke download right now
+YouTube thinks this network downloads too much and asks to confirm it is not a robot. Trying again right away will most likely be refused too.
+What you can do
+Sing songs that are already in the library.
+Try again later, after 30 minutes to a few hours.
+Connect the karaoke computer to another network, for example a phone's hotspot, and try again.
+Admin: installing the PO token service makes this happen less often. In the program folder run python scripts/setup_bgutil.py, then restart the karaoke.
+Admin: the PO token service is switched off (--no-pot). Starting without --no-pot makes this happen less often.
+Admin: the PO token service is already running. As a last resort, start the karaoke with -c chrome to download signed in to YouTube. This is experimental: YouTube may restrict that account, so use a spare one.
+YouTube refused a download %s minutes ago. Trying again soon will most likely be refused too.

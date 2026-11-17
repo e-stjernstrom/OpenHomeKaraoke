@@ -1,4 +1,4 @@
-import os, sys, io, random, time, json, datetime
+import os, sys, io, re, random, time, json, datetime
 import logging, socket, subprocess, threading
 import shutil, psutil, traceback, tarfile, requests
 from subprocess import check_output
@@ -16,6 +16,9 @@ from unidecode import unidecode
 from flask import request
 from lib import omxclient, vlcclient
 from lib.vocal_dirs import is_split_disabled
+from lib import vocal_models as vm
+from lib import split_status
+from lib import browser_cookies, subtitle_langs
 from lib.get_platform import *
 from lib.NLP import *
 from app import getString, getString1
@@ -25,10 +28,25 @@ if get_platform() != "windows":
 	signal(SIGTERM, lambda signum, stack_frame: os.K.stop())
 
 STD_VOL = 65536/8/np.sqrt(2)
-ip2websock, ip2pane, ip2lang = {}, {}, {}
+ip2websock, ip2lang = {}, {}
 STR_CANNOT_PLAY = 238  # 'Cannot play "%s" (the file may be damaged). Skipped.'
 
-ws_send = lambda ip, msg: ip2websock[ip].send(msg) if ip in ip2websock else None
+# the last yt-dlp error message of this thread (downloads run in their own threads)
+_yt_error = threading.local()
+
+def youtube_refused(message):
+	"""True if YouTube refused as a suspected bot or for too many requests: retrying soon is useless."""
+	return bool(re.search(r"not a bot|HTTP Error 429|Too Many Requests", message or '', re.I))
+
+def ws_send(ip, event):
+	"""Send one event to the web page of this client. Events are JSON objects with a "type" key
+	(see frontend/src/api.ts); the page never executes anything it receives."""
+	# one address can have several pages open (tabs, or a reload whose old socket is still closing)
+	for sock in list(ip2websock.get(ip, ())):
+		try:
+			sock.send(json.dumps(event))
+		except Exception as e:
+			logging.debug(f"Could not send to {ip}: {e}")
 
 def fill_s(template, value):
 	# Some machine-translated lang lines have a broken placeholder ("% S", "%с"), so don't use % formatting
@@ -36,16 +54,12 @@ def fill_s(template, value):
 
 def broadcast_notification(string_id, value, category = "is-danger", timeout_ms = 8000):
 	# Show a notification on every connected web client, each in its own language
-	for ip, ws in list(ip2websock.items()):
+	for ip in list(ip2websock.keys()):
 		msg = fill_s(getString1(ip2lang.get(ip, os.lang), string_id), value)
-		try:
-			ws.send(f'showNotification({json.dumps(msg)}, {json.dumps(category)}, {int(timeout_ms)})')
-		except Exception as e:
-			logging.debug(f"Could not notify {ip}: {e}")
+		ws_send(ip, {'type': 'notify', 'message': msg, 'category': category, 'timeout': int(timeout_ms)})
 
 def flash(message: str, category: str = "message", client_ip = ''):
-	# message often contains a song title; json.dumps makes it a safe JavaScript string literal
-	ws_send(client_ip or request.remote_addr, f'showNotification({json.dumps(str(message))}, {json.dumps(category)})')
+	ws_send(client_ip or request.remote_addr, {'type': 'notify', 'message': str(message), 'category': category})
 
 def unwrap_urllib3_percent_re():
 	"""yt-dlp wraps urllib3's _PERCENT_RE in a Urllib3PercentREOverride object when it is imported.
@@ -93,12 +107,14 @@ class Karaoke:
 	audio_delay = 0
 	has_video = True
 	has_subtitle = False
+	youtube_blocked_at = 0  # time.time() when YouTube last refused a download as a bot
+	pot_state = 'off'
 	subtitle_delay = 0
 	play_speed = 1.0
 	show_subtitle = True
 	last_vocal_info = 0
 	last_vocal_time = 0
-	use_DNN_vocal = True
+	vocal_model = vm.DEFAULT_MODEL  # chosen on the Info page, see lib/vocal_models.py
 	vocal_process = None
 	vocal_device = None
 	vocal_mode = 'mixed'
@@ -108,10 +124,11 @@ class Karaoke:
 	qr_code_path = None
 	base_path = os.path.dirname(__file__)
 	volume_offset = 0
-	default_logo_path = os.path.join(base_path, "logo.jpg")
+	default_logo_path = os.path.join(base_path, "logo.png")
 	logical_volume = None   # for normalized volume
 	status_dirty = True
 	event_dirty = threading.Event()
+	video_view = None       # macOS: NSView of the pygame window that VLC draws into
 	skip_notice = None      # (title, time) of the last song VLC could not play, shown on the splash screen
 	skip_notice_secs = 10
 
@@ -121,6 +138,7 @@ class Karaoke:
 		self.__dict__.update(args.__dict__)
 		self.omxplayer_adev = 'both'
 		self.download_path = args.dl_path
+		self.vocal_model = vm.get_selected(self.download_path)
 		self.volume_offset = self.volume = args.volume
 		self.logo_path = self.default_logo_path if args.logo_path == None else args.logo_path
 
@@ -178,8 +196,17 @@ class Karaoke:
 
 		self.generate_qr_code()
 		if self.use_vlc:
-			self.vlcclient = vlcclient.VLCClient(port = self.vlc_port, path = self.vlc_path,
-			                                     qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
+			vlc_args = dict(port = self.vlc_port, path = self.vlc_path,
+			                qrcode = (self.qr_code_path if self.show_overlay else None), url = self.url)
+			if self.platform == 'osx' and not self.hide_splash_screen:
+				# macOS: a VLC process cannot draw into the pygame window, so run libvlc in-process
+				try:
+					from lib.vlc_embedded import EmbeddedVLCClient
+					self.vlcclient = EmbeddedVLCClient(get_view = lambda: self.video_view, **vlc_args)
+				except Exception as e:
+					logging.warning(f"Cannot run VLC inside the window ({e}); VLC opens its own window")
+			if self.vlcclient is None:
+				self.vlcclient = vlcclient.VLCClient(**vlc_args)
 			self.vlcclient.wait_hook = self.pump_events_if_main_thread
 		else:
 			self.omxclient = omxclient.OMXClient(path = self.omxplayer_path, adev = self.omxplayer_adev,
@@ -219,8 +246,8 @@ class Karaoke:
 				try:
 					fn = self.cloud_tasks.pop(0)
 					bn, dn = os.path.basename(fn), os.path.dirname(fn)
-					if os.path.isfile(f'{self.download_path}nonvocal/{bn}.m4a') and os.path.isfile(f'{self.download_path}vocal/{bn}.m4a'):
-						continue
+					if all(vm.find_result(self.download_path, d, 'baseline', bn)[0] for d in vm.SUBDIRS):
+						continue  # a neural-network result already exists
 					os.system(f'ffmpeg -y -i "{fn}" -vn -c copy {self.tmp_dir}/input.m4a')
 					with open(f'{self.tmp_dir}/input.m4a', 'rb') as f:
 						r = requests.post(self.cloud+'/split_vocal', files={'file': f})
@@ -294,7 +321,7 @@ class Karaoke:
 		if not self.hide_splash_screen:
 			logging.debug("Initializing pygame")
 			pygame.init()
-			pygame.display.set_caption("pikaraoke")
+			pygame.display.set_caption("OpenHomeKaraoke")
 			pygame.mouse.set_visible(0)
 			self.fonts = {}
 			self.WIDTH = pygame.display.Info().current_w
@@ -326,14 +353,47 @@ class Karaoke:
 		if not self.hide_splash_screen:
 			logging.debug("Toggling fullscreen...")
 			self.full_screen = not self.full_screen if fullscreen is None else fullscreen
-			if self.full_screen:
+			if self.platform == 'osx':
+				self.set_mac_full_screen(self.full_screen)
+			elif self.full_screen:
 				self.screen = pygame.display.set_mode([self.WIDTH, self.HEIGHT], self.get_default_display_mode())
 			else:
 				self.screen = pygame.display.set_mode([self.WIDTH*3//4, self.HEIGHT*3//4], pygame.RESIZABLE)
+			if self.platform == 'osx':
+				# the view the in-process VLC draws into (see lib/vlc_embedded.py)
+				from lib.vlc_embedded import nsview_of_pygame_window
+				self.video_view = Try(lambda: nsview_of_pygame_window(pygame.display.get_wm_info()), None)
 			if self.is_file_playing():
 				self.play_transposed(self.now_playing_transpose)
 			else:
 				self.render_splash_screen()
+
+	def set_mac_full_screen(self, full):
+		"""macOS: fullscreen in its own Space, like other Mac apps. pygame.FULLSCREEN puts the
+		window above everything (shielding level): Cmd+Tab cannot switch away and the system's
+		volume/brightness overlays are hidden behind it."""
+		from pygame._sdl2.video import Window
+		window_size = [self.WIDTH*3//4, self.HEIGHT*3//4]
+		if pygame.display.get_surface() is None:
+			pygame.display.set_mode(window_size, pygame.RESIZABLE)
+		window = Window.from_display_module()
+		# pygame 2.5 stores a pointer to this object in the SDL window without holding a
+		# reference, and hands it out again as event.window. Freeing it corrupts the heap
+		# (segfault later, e.g. in psutil), so keep every one alive.
+		Karaoke._sdl_windows = getattr(Karaoke, '_sdl_windows', []) + [window]
+		old_size = pygame.display.get_window_size()
+		if full:
+			window.set_fullscreen(True)  # desktop fullscreen, which SDL puts in a Space
+		else:
+			window.set_windowed()
+			window.size = window_size
+		# the Space animation resizes the window a moment later; wait for it (up to 2 s)
+		deadline = time.time() + 2
+		done = (lambda s: s != tuple(old_size)) if full else (lambda s: s == tuple(window_size))
+		while not done(pygame.display.get_window_size()) and time.time() < deadline:
+			pygame.event.pump()
+			time.sleep(0.03)
+		self.screen = pygame.display.get_surface()
 
 	def normalize(self, v):
 		r = self.screen.get_width()/self.ref_W
@@ -402,8 +462,8 @@ class Karaoke:
 		blitY = 10
 		if not self.has_video:
 			logging.debug("Rendering current song to splash screen")
-			render_next_song = self.render_font([60, 50, 40], getString(58) + (self.now_playing or ''), (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + (self.now_playing_user or ''), (0, 240, 0))
+			render_next_song = self.render_font([60, 50, 40], getString(58) + (self.now_playing or ''), (246, 208, 98))
+			render_next_user = self.render_font([50, 40, 30], getString(57) + (self.now_playing_user or ''), (152, 225, 210))
 			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(10)))
 			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(80)))
 			blitY += 140
@@ -412,11 +472,11 @@ class Karaoke:
 			logging.debug("Rendering next song to splash screen")
 			next_song = self.queue[0]["title"]
 			next_user = self.queue[0]["user"]
-			render_next_song = self.render_font([60, 50, 40], getString(56) + next_song, (255, 255, 0))
-			render_next_user = self.render_font([50, 40, 30], getString(57) + next_user, (0, 240, 0))
+			render_next_song = self.render_font([60, 50, 40], getString(56) + next_song, (246, 208, 98))
+			render_next_user = self.render_font([50, 40, 30], getString(57) + next_user, (152, 225, 210))
 			self.screen.blit(render_next_song[0], (self.screen.get_width() - render_next_song[1].width - 10, self.normalize(blitY)))
 			self.screen.blit(render_next_user[0], (self.screen.get_width() - render_next_user[1].width - 10, self.normalize(blitY+70)))
-		elif not self.firstSongStarted:
+		elif not self.firstSongStarted and logging.getLogger().isEnabledFor(logging.DEBUG):
 			text1 = self.render_font(sysfont_size, getString(196) + ': ' + self.download_path, (255, 255, 0))
 			self.screen.blit(text1[0], self.normalize((20, 20)))
 			text2 = self.render_font(sysfont_size, getString(197) + ': %d'%len(self.available_songs), (255, 255, 0))
@@ -463,7 +523,47 @@ class Karaoke:
 			break
 		return render
 
-	def call_yt_dlp(self, argv, get_stdout = False):
+	def call_yt_dlp(self, argv, get_stdout = False, progress = None, ydl_class = None):
+		"""Run yt-dlp. If it fails because the browser cookies cannot be read (e.g. the browser
+		was closed for good, the cookies file was deleted, or a permission was taken away), run it
+		again without cookies so search and non-YouTube sites keep working."""
+		cookies = self.cookies_opt
+		at = next((i for i in range(len(argv)) if cookies and argv[i:i+len(cookies)] == cookies), None)
+		error = None
+		try:
+			ret = self._call_yt_dlp(argv, get_stdout, progress, ydl_class)
+			failed = not ret if get_stdout else ret not in (0, None)
+		except subprocess.CalledProcessError as e:
+			ret, failed, error = None, True, e
+		reason = browser_cookies.unreadable(cookies) if failed and at is not None else ''
+		if not reason:  # no cookies used, or they are fine: the failure has another cause
+			if error is not None:
+				raise error
+			return ret
+		logging.warning(f"yt-dlp: cannot read cookies from {cookies[1]} ({reason}); retrying without them")
+		return self._call_yt_dlp(argv[:at] + argv[at+len(cookies):], get_stdout, progress, ydl_class)
+
+	def _call_yt_dlp(self, argv, get_stdout = False, progress = None, ydl_class = None):
+		"""Run yt-dlp. progress(fraction) is called while downloading; ydl_class replaces
+		yt_dlp.YoutubeDL (both in-process yt-dlp only)."""
+		_yt_error.msg = ''
+		if progress and not self.youtubedl_path and not get_stdout:
+			import yt_dlp
+			try:
+				po = yt_dlp.parse_options(argv)
+				def hook(d):
+					if d.get('status') == 'downloading':
+						total = d.get('total_bytes') or d.get('total_bytes_estimate')
+						if total:
+							progress(min(1.0, d.get('downloaded_bytes', 0) / total))
+				with (ydl_class or yt_dlp.YoutubeDL)(dict(po.ydl_opts, progress_hooks = [hook])) as ydl:
+					return ydl.download(po.urls)
+			except SystemExit as e:
+				return e.code
+			except Exception as e:
+				logging.error(f'yt-dlp: {e}')
+				_yt_error.msg = str(e)
+				return 1
 		if self.youtubedl_path:
 			if get_stdout:
 				return subprocess.check_output([self.youtubedl_path]+argv).decode("utf-8")
@@ -530,23 +630,38 @@ class Karaoke:
 		filename = f"{info_json['title']}---{info_json['id']}.{info_json['ext']}"
 		return filename if os.path.isfile(self.download_path+'tmp/'+filename) else None
 
-	def download_video(self, client_lang='', client_ip='', song_url = '', enqueue = False, song_added_by = "Pikaraoke", include_subtitles = False, high_quality = False):
+	def download_video(self, client_lang='', client_ip='', song_url = '', enqueue = False, song_added_by = "Pikaraoke", include_subtitles = False, high_quality = False, sub_langs = None):
 		logging.info("Downloading video: " + song_url)
 		getString2 = lambda ii: os.langs.get(client_lang, os.langs['en_US'])[ii]
 		self.downloading_songs[song_url] = 1
+		last = [0.0]
+		def progress(fraction):
+			# at most once a second, to the phone that asked for it
+			if time.time() - last[0] >= 1:
+				last[0] = time.time()
+				ws_send(client_ip, {'type': 'download', 'url': song_url, 'state': 1, 'progress': round(fraction, 3)})
 		dl_path = "%(title)s---%(id)s.%(ext)s"
 		opt_quality = ['-f', 'bestvideo[height<=1080]+bestaudio[abr<=160]'] if high_quality else ['-f', 'mp4+m4a']
-		opt_sub = ['--sub-langs', 'all', '--embed-subs'] if include_subtitles else []
-		cmd = ['--fixup', 'force', '--socket-timeout', '3', '-R', 'infinite', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + opt_quality +\
+		# subtitles: the languages the phone asked for, else its own language, the TV's, English
+		if isinstance(sub_langs, str):
+			sub_langs = sub_langs.split(',')
+		sub_langs = [str(c)[:20] for c in sub_langs][:10] if isinstance(sub_langs, list) else None
+		wanted = subtitle_langs.wanted_list(*(sub_langs or [client_lang, getattr(os, 'lang', ''), 'en']))[:subtitle_langs.LIMIT]
+		ydl_class = subtitle_langs.youtube_dl_class(wanted) if include_subtitles and not self.youtubedl_path else None
+		opt_sub = (['--sub-langs', 'all' if ydl_class else subtitle_langs.regex_list(wanted), '--embed-subs']
+		           + subtitle_langs.postprocessor_args(wanted)) if include_subtitles else []
+		cmd = ['--fixup', 'force', '--socket-timeout', '15', '-R', '10', '--fragment-retries', '10', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + opt_quality +\
 			["-o", self.download_path+'tmp/'+dl_path] + opt_sub + [song_url]
 		logging.info("Youtube-dl command: " + " ".join(cmd))
-		rc = self.call_yt_dlp(cmd)
-		if rc != 0:
+		rc = self.call_yt_dlp(cmd, progress = progress, ydl_class = ydl_class)
+		blocked = rc != 0 and youtube_refused(getattr(_yt_error, 'msg', ''))
+		if rc != 0 and not blocked:
 			logging.error("Error code while downloading, retrying without format options ...")
-			cmd = ['--fixup', 'force', '--socket-timeout', '3', '-R', 'infinite', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + \
+			cmd = ['--fixup', 'force', '--socket-timeout', '15', '-R', '10', '--fragment-retries', '10', '--remux-video', 'mp4', '--js-runtimes', 'node', '--remote-components', 'ejs:github'] + self.cookies_opt + \
 				["-o", self.download_path + 'tmp/' + dl_path] + opt_sub + [song_url]
 			logging.debug("Youtube-dl command: " + " ".join(cmd))
-			rc = self.call_yt_dlp(cmd)
+			rc = self.call_yt_dlp(cmd, progress = progress, ydl_class = ydl_class)
+			blocked = rc != 0 and youtube_refused(getattr(_yt_error, 'msg', ''))
 		if rc == 0:
 			logging.debug("Song successfully downloaded: " + song_url)
 			self.downloading_songs[song_url] = 0
@@ -564,11 +679,17 @@ class Karaoke:
 				logging.error("Error queueing song: " + song_url)
 				self.downloading_songs[song_url] = '01'
 				flash(getString2(189)+' '+getString2(192), client_ip = client_ip)
+		elif blocked:
+			# the page shows what to do instead (retrying soon will be refused too)
+			logging.error("YouTube refused the download (suspected bot or too many requests): " + song_url)
+			self.downloading_songs[song_url] = -1
+			self.youtube_blocked_at = time.time()
 		else:
 			logging.error("Error downloading song: " + song_url)
 			self.downloading_songs[song_url] = -1
 			flash(getString2(190), client_ip = client_ip)
-		return ws_send(client_ip, 'download_ended()')
+		ws_send(client_ip, {'type': 'download', 'url': song_url, 'state': self.downloading_songs.get(song_url)}
+		        | ({'reason': 'blocked'} if blocked and rc != 0 else {}))
 
 	def get_available_songs(self):
 		logging.info("Fetching available songs in: " + self.download_path)
@@ -592,11 +713,7 @@ class Karaoke:
 		basename = os.path.basename(song_path)
 		basestem = os.path.splitext(basename)
 		return [self.download_path + basename,
-				self.download_path + basestem[0] + '.cdg',
-				self.download_path + 'nonvocal/' + basename + '.m4a',
-				self.download_path + 'nonvocal/.' + basename + '.m4a',
-				self.download_path + 'vocal/' + basename + '.m4a',
-				self.download_path + 'vocal/.' + basename + '.m4a']
+				self.download_path + basestem[0] + '.cdg'] + vm.all_result_paths(self.download_path, basename)
 
 	def delete_if_exist(self, filename):
 		if os.path.isfile(filename):
@@ -683,7 +800,9 @@ class Karaoke:
 			if self.subtitle_delay:
 				extra_params1 += [f'--sub-delay={self.subtitle_delay * 10}']
 			if self.show_subtitle:
-				extra_params1 += [f'--sub-track=0']
+				# not simply the first track: older downloads have all languages, alphabetical
+				track = subtitle_langs.pick_track(file_path, subtitle_langs.wanted_list(getattr(os, 'lang', ''), 'en'))
+				extra_params1 += [f'--sub-track={track or 0}']
 			if self.play_speed != 1:
 				extra_params1 += [f'--rate={self.play_speed}']
 			self.now_playing = self.filename_from_path(file_path)
@@ -778,6 +897,15 @@ class Karaoke:
 		self.queue_json = json.dumps(self.queue)
 		self.status_dirty = True
 
+	def queue_insert(self, index, song_path, user):
+		"""Put a song back at a position, e.g. to undo removing it from the queue."""
+		if self.is_song_in_queue(song_path) or not os.path.isfile(song_path):
+			return False
+		index = max(0, min(int(index), len(self.queue)))
+		self.queue.insert(index, {"user": user, "file": song_path, "title": self.filename_from_path(song_path)})
+		self.update_queue()
+		return True
+
 	def queue_clear(self):
 		logging.info("Clearing queue!")
 		self.queue = []
@@ -799,7 +927,9 @@ class Karaoke:
 				logging.error("Invalid move song request: " + str(kwargs))
 				return False
 		else:
-			match = [(ii,each) for ii,each in enumerate(self.queue) if song_file in each["file"]]
+			# exact path first: one song's path can be part of another's
+			match = [(ii,each) for ii,each in enumerate(self.queue) if song_file == each["file"]] or \
+			        [(ii,each) for ii,each in enumerate(self.queue) if song_file in each["file"]]
 			index, song = match[0] if match else (-1, None)
 			if song == None:
 				logging.error("Song not found in queue: " + song_file)
@@ -820,6 +950,10 @@ class Karaoke:
 					logging.info("Bumping song down in queue: " + song["file"])
 					del self.queue[index]
 					self.queue.insert(index + 1, song)
+			elif action == "top":
+				logging.info("Moving song to the top of the queue: " + song["file"])
+				del self.queue[index]
+				self.queue.insert(0, song)
 			elif action == "delete":
 				logging.info("Deleting song from queue: " + song["file"])
 				del self.queue[index]
@@ -1007,9 +1141,10 @@ class Karaoke:
 	def try_set_vocal_mode(self, mode, now_playing_filename):
 		if mode not in ['mixed', 'vocal', 'nonvocal']:
 			mode = {1: 'nonvocal', 2: 'mixed', 3: 'vocal'}[self.get_vocal_mode()]
-		play_slave = '' if mode == 'mixed' else self.download_path + mode + '/' + ('' if self.use_DNN_vocal else '.') \
-		                                       + os.path.basename(now_playing_filename) + '.m4a'
-		if os.path.isfile(play_slave):
+		# the selected model's result, or else the best other existing one (see vm.fallback_order)
+		play_slave = '' if mode == 'mixed' else \
+			vm.find_result(self.download_path, mode, self.vocal_model, os.path.basename(now_playing_filename))[0]
+		if play_slave:
 			self.vocal_mode = mode
 		else:
 			play_slave = ''
@@ -1018,6 +1153,8 @@ class Karaoke:
 
 	def play_vocal(self, mode = None, force = False):
 		# mode=vocal/nonvocal/mixed, or else (use current)
+		if not self.now_playing_filename:
+			return  # nothing is playing (e.g. a phone sent the request between two songs)
 		if self.use_vlc:
 			play_slave = self.try_set_vocal_mode(mode, self.now_playing_filename)
 			if not force and self.now_playing_slave == play_slave:
@@ -1029,6 +1166,16 @@ class Karaoke:
 			self.get_vocal_info(True)
 		else:
 			logging.error("Not using VLC. Can't play vocal/nonvocal.")
+
+	@property
+	def use_DNN_vocal(self):
+		return self.vocal_model != 'LR'
+
+	def set_vocal_model(self, model):
+		self.vocal_model = vm.set_selected(self.download_path, model)
+		if self.now_playing_filename:
+			self.play_vocal()
+		return self.vocal_model
 
 	def get_vocal_mode(self):
 		if '/nonvocal/' in self.now_playing_slave.replace('\\', '/'):
@@ -1045,15 +1192,17 @@ class Karaoke:
 			return 0
 		mask = 0
 		bn = os.path.basename(self.now_playing_filename)
-		if os.path.isfile(f'{self.download_path}nonvocal/{bn}.m4a'):
+		# bits 0/1: a neural-network instrumental/vocal track exists (any model); bits 2/3: L-R/L+R ones
+		dnn = 'baseline' if self.vocal_model == 'LR' else self.vocal_model
+		if vm.find_result(self.download_path, 'nonvocal', dnn, bn)[0]:
 			mask |= 0b00000001
-		if os.path.isfile(f'{self.download_path}vocal/{bn}.m4a'):
+		if vm.find_result(self.download_path, 'vocal', dnn, bn)[0]:
 			mask |= 0b00000010
-		if os.path.isfile(f'{self.download_path}nonvocal/.{bn}.m4a'):
+		if os.path.isfile(vm.result_path(self.download_path, 'nonvocal', 'LR', bn)):
 			mask |= 0b00000100
-		if os.path.isfile(f'{self.download_path}vocal/.{bn}.m4a'):
+		if os.path.isfile(vm.result_path(self.download_path, 'vocal', 'LR', bn)):
 			mask |= 0b00001000
-		if 'vocal/.' in self.now_playing_slave:
+		if vm.result_model(self.now_playing_slave) == 'LR':
 			mask |= 0b10000000
 		if self.use_DNN_vocal:
 			mask |= 0b01000000
@@ -1177,10 +1326,38 @@ class Karaoke:
 			return 'ffmpeg not found'
 		return ''
 
+	def splitter_state(self):
+		"""'running', 'stopped', 'off' or 'unavailable' (see lib/split_status.py). Cached for a few
+		seconds: looking for a hand-started splitter walks the process list."""
+		now = time.time()
+		cache = getattr(self, '_splitter_state_cache', None)
+		if cache and now - cache[0] < 3:
+			return cache[1]
+		if self.no_vocal or self.vocal_splitter_missing():
+			state = 'unavailable'
+		elif is_split_disabled(self.download_path):
+			state = 'off'
+		else:
+			state = 'running' if self.vocal_alive() else 'stopped'
+		self._splitter_state_cache = (now, state)
+		return state
+
+	def split_states(self, files):
+		"""{path: state dict} for these songs, see lib/split_status.song_states()."""
+		try:
+			order = ([self.now_playing_filename] if self.now_playing_filename else []) + [q['file'] for q in self.queue]
+			states = split_status.song_states(self.download_path, order + [f for f in files if f not in order],
+			                                  self.vocal_model, self.splitter_state())
+			return {f: states[f] for f in files}
+		except Exception as e:
+			logging.debug(f'split_states: {e}')
+			return {}
+
 	def vocal_restart(self):
 		# The splitter runs as a separate Python process, so PyTorch is never loaded into this
 		# (multi-threaded, UI) process, and a crash in the splitter cannot take the karaoke down.
 		self.vocal_stop()
+		self._splitter_state_cache = None
 		if self.no_vocal:
 			logging.info('Vocal splitter not started (--no-vocal)')
 			return False
@@ -1208,6 +1385,7 @@ class Karaoke:
 			return False
 
 	def vocal_stop(self):
+		self._splitter_state_cache = None
 		p, self.vocal_process = self.vocal_process, None
 		if p is not None and p.poll() is None:
 			p.terminate()
