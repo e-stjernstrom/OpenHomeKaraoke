@@ -4,6 +4,8 @@ OpenHomeKaraoke is a "KTV"-style karaoke system: search, download and queue song
 
 It started as PiKaraoke, forked from @vicwomg's repo (thanks to https://github.com/vicwomg/pikaraoke/), and was thoroughly revamped. It removes the vocals with neural networks (UVR5's VR models, and @tsurumeso's vocal remover, thanks to https://github.com/tsurumeso/vocal-remover), talks to phones over WebSockets to save bandwidth, and supports voice search. It works on Linux, Windows, Raspberry Pi and macOS.
 
+This repository continues Wang Xuancong's [OpenHomeKaraoke](https://github.com/xuancong84/OpenHomeKaraoke) as a separate project, with a new web page, a choice of vocal removal models, Apple Silicon support and many fixes. See [CHANGELOG.md](CHANGELOG.md) for everything that changed since. Like the original, it is licensed under the [GPL-3.0](LICENSE).
+
 See a demo on YouTube: [![Img alt text](https://img.youtube.com/vi/kmQax0EhAxE/0.jpg)](https://www.youtube.com/watch?v=kmQax0EhAxE)
 
 ## Key Features
@@ -62,7 +64,7 @@ Linux, Windows, macOS and Raspberry Pi (3 and newer, multi-core models recommend
    - Windows: Python 3.12 from python.org (tick "Add python.exe to PATH"), VLC from videolan.org, then `winget install Gyan.FFmpeg` and `winget install Git.Git`
 2. Get the program and make a venv:
    ```bash
-   git clone https://github.com/xuancong84/OpenHomeKaraoke.git
+   git clone https://github.com/e-stjernstrom/OpenHomeKaraoke.git
    cd OpenHomeKaraoke
    python3.12 -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
