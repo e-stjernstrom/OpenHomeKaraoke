@@ -129,7 +129,7 @@ export default function LibraryPage() {
                       </Stack>
                     }
                   >
-                    <ListItemButton onClick={() => !s.queued && enqueue(s)} sx={{ pr: config.admin ? 12 : 7 }}>
+                    <ListItemButton onClick={() => !s.queued && enqueue(s)} sx={{ '&&&': { pr: config.admin ? 13 : 7 } }}>
                       <ListItemText
                         primary={s.title}
                         secondary={s.queued ? t(S.alreadyQueued) : undefined}
