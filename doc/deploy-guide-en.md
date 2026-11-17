@@ -256,7 +256,17 @@ The computer's firewall may be blocking it.
 
 ### YouTube asks to "confirm you're not a bot"
 
-On some networks (work, school, shared Wi-Fi) YouTube only allows downloads when you are signed in. You can let the program use your browser's YouTube sign-in (its cookies).
+On some networks (work, school, shared Wi-Fi) YouTube refuses downloads, or only gives low quality without subtitles.
+
+**Install the PO token service first (bgutil, no account needed).** It makes the "proof of origin" (PO) tokens YouTube asks for, the way a browser does, so downloads are refused less often and subtitles come through. It cannot guarantee that YouTube never refuses. It needs git and Node.js 22 or newer. In the program folder, run once:
+
+```
+python scripts/setup_bgutil.py
+```
+
+(With a virtual environment, use its python.) From then on the karaoke starts the service by itself and prints `PO token provider: bgutil ... started`. Add `--no-pot` to leave it off.
+
+#### Still refused: use your browser's sign-in (cookies)
 
 **This is experimental and off by default.** YouTube may restrict an account that downloads a lot, so use a spare account.
 

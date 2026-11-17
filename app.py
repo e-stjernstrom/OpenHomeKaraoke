@@ -19,7 +19,7 @@ from lib.get_platform import *
 from lib.vlcclient import get_default_vlc_path
 from lib.vocal_dirs import ensure_vocal_dirs, is_split_disabled, set_split_enabled
 from lib import vocal_models as vm
-from lib import browser_cookies
+from lib import browser_cookies, pot_provider
 
 try:
 	from urllib.parse import quote, unquote
@@ -807,6 +807,11 @@ if __name__ == "__main__":
 		action = 'store_true',
 	)
 	parser.add_argument(
+		"--no-pot",
+		help = "Do not start the bgutil PO token server for YouTube downloads (see scripts/setup_bgutil.py)",
+		action = 'store_true',
+	)
+	parser.add_argument(
 		"-nv", "--normalize-vol",
 		help = "Enable volume normalization",
 		action = 'store_true',
@@ -958,6 +963,12 @@ if __name__ == "__main__":
 			print(f"YouTube sign-in: {count} cookies from {source}, signed in to YouTube: "
 			      + ("yes" if signed_in else "NO (sign in to YouTube in that browser, or downloads may be refused)"))
 
+	# PO tokens make YouTube refuse downloads less often, without signing in (optional, bgutil)
+	if args.no_pot:
+		print("PO token provider: off (--no-pot)")
+	else:
+		print("PO token provider: " + pot_provider.start(os.path.join(args.tmp_dir, 'bgutil.log'))[1])
+
 	# Handle OMX player if specified
 	if platform == "raspberry_pi" and args.use_omxplayer:
 		args.use_vlc = False
@@ -1034,4 +1045,5 @@ if __name__ == "__main__":
 	threading.Thread(target=status_thread).start()
 
 	K.run()
+	pot_provider.stop()
 	os._exit(0)	# force-stop all flask threads and exit

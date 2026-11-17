@@ -256,7 +256,17 @@ python app.py -w
 
 ### YouTube 要求「確認你不是機器人」
 
-有些網路（公司、學校、共用 Wi-Fi）會被 YouTube 要求登入才能下載。這時可以讓程式用瀏覽器裡的 YouTube 登入資料（cookie）。
+有些網路（公司、學校、共用 Wi-Fi）會被 YouTube 擋下載，或只給低畫質、沒有字幕。
+
+**建議先裝 PO token 服務（bgutil，不用登入任何帳號）。** 它照瀏覽器的方式產生 YouTube 要的「來源證明」（PO token），能減少被擋，字幕也拿得到；但不能保證一定不被擋。需要 git 和 Node.js 22 以上，在程式資料夾執行一次：
+
+```
+python scripts/setup_bgutil.py
+```
+
+（用虛擬環境的話，請用虛擬環境裡的 python。）之後每次啟動卡拉 OK 都會自動開這個服務，畫面會顯示 `PO token provider: bgutil ... started`。不想用時加 `--no-pot`。
+
+#### 還是被擋：用瀏覽器的登入資料（cookie）
 
 **這是實驗功能，預設關閉。** 用帳號大量下載，YouTube 可能限制那個帳號，請用不重要的小號。
 

@@ -7,3 +7,4 @@ qrcode.png
 .DS_Store
 models/vr/
 frontend/node_modules/
+third_party/

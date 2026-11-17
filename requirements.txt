@@ -6,6 +6,7 @@ pinyin
 wheel
 pydub
 yt-dlp
+bgutil-ytdlp-pot-provider==2.0.2
 tempora==1.14.0
 jaraco.functools==2.0
 six
