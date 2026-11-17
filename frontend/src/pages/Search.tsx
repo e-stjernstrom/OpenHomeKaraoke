@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import TextField from '@mui/material/TextField';
@@ -47,6 +47,59 @@ const hostOf = (u: string) => {
   }
 };
 const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim());
+
+/** High quality / subtitles for downloads, remembered on this device (localStorage). Until the
+ *  user picks, high quality follows the server's --high-quality option. */
+type DownloadPrefs = { hq: boolean; subs: boolean };
+const PREFS_KEY = 'ohk.downloadPrefs';
+const prefsListeners = new Set<() => void>();
+let savedPrefs: Partial<DownloadPrefs> | null = null;
+const readPrefs = (): Partial<DownloadPrefs> => {
+  if (!savedPrefs) {
+    try {
+      savedPrefs = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
+    } catch {
+      savedPrefs = {};
+    }
+  }
+  return savedPrefs!;
+};
+const writePrefs = (p: Partial<DownloadPrefs>) => {
+  savedPrefs = { ...readPrefs(), ...p };
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(savedPrefs));
+  } catch {
+    /* private mode: remembered until the page is reloaded */
+  }
+  prefsListeners.forEach((f) => f());
+};
+const subscribePrefs = (f: () => void) => {
+  prefsListeners.add(f);
+  return () => void prefsListeners.delete(f);
+};
+function useDownloadPrefs(): [DownloadPrefs, (p: Partial<DownloadPrefs>) => void] {
+  const { config } = useApp();
+  const saved = useSyncExternalStore(subscribePrefs, readPrefs);
+  return [{ hq: saved.hq ?? config.high_quality, subs: saved.subs ?? false }, writePrefs];
+}
+
+/** The remembered download settings as switches, so it is visible what one tap downloads. */
+function DownloadPrefSwitches() {
+  const { t } = useApp();
+  const [prefs, setPrefs] = useDownloadPrefs();
+  const sw = (label: string, key: keyof DownloadPrefs) => (
+    <FormControlLabel
+      control={<Switch size="small" checked={prefs[key]} onChange={(e) => setPrefs({ [key]: e.target.checked })} />}
+      label={<Typography variant="body2">{label}</Typography>}
+    />
+  );
+  return (
+    <>
+      {sw(t(S.highQuality), 'hq')}
+      {sw(t(S.includeSubtitles), 'subs')}
+    </>
+  );
+}
 
 /** Library matches first (instant), then YouTube on demand. A pasted link downloads directly. */
 export default function SearchPage() {
@@ -198,6 +251,7 @@ export default function SearchPage() {
                   control={<Switch size="small" checked={karaokeOnly} onChange={(e) => setKaraokeOnly(e.target.checked)} />}
                   label={<Typography variant="body2">{t(S.karaokeOnly)}</Typography>}
                 />
+                <DownloadPrefSwitches />
               </Stack>
               {ytError && (
                 <Alert severity="error" sx={{ mt: 1 }}>
@@ -272,9 +326,10 @@ function useElapsed(since: number | null, on: boolean) {
 }
 
 function useStartDownload() {
-  const { t, user, config, notify } = useApp();
+  const { t, user, notify } = useApp();
+  const [prefs] = useDownloadPrefs();
   return (url: string, title: string, opts?: { enqueue: boolean; subs: boolean; hq: boolean }) => {
-    const o = opts ?? { enqueue: true, subs: false, hq: config.high_quality };
+    const o = opts ?? { enqueue: true, ...prefs };
     window.dispatchEvent(new CustomEvent('ohk-download', { detail: url }));
     postJson<OkResponse>('/download', {
       song_url: url,
@@ -335,6 +390,9 @@ function LinkDownload({ url, onOptions }: { url: string; onOptions: () => void }
         <Button color="secondary" onClick={onOptions}>
           {t(S.downloadOptions)}
         </Button>
+      </Stack>
+      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap' }}>
+        <DownloadPrefSwitches />
       </Stack>
     </Stack>
   );
@@ -398,13 +456,25 @@ function YouTubeRow({ r, onOptions }: { r: YouTubeResult; onOptions: () => void 
 }
 
 function DownloadDialog({ item, onClose }: { item: { url: string; title: string } | null; onClose: () => void }) {
-  const { t, config } = useApp();
+  const { t } = useApp();
   const start = useStartDownload();
+  const [prefs, setPrefs] = useDownloadPrefs();
   const [enqueue, setEnqueue] = useState(true);
-  const [subs, setSubs] = useState(false);
-  const [hq, setHq] = useState(config.high_quality);
+  const [subs, setSubs] = useState(prefs.subs);
+  const [hq, setHq] = useState(prefs.hq);
+  useEffect(() => {
+    // start from the remembered settings each time the dialog opens
+    if (!item) return;
+    setEnqueue(true);
+    setSubs(prefs.subs);
+    setHq(prefs.hq);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item]);
   const go = () => {
-    if (item) start(item.url, item.title, { enqueue, subs, hq });
+    if (item) {
+      setPrefs({ subs, hq }); // what is picked here is used for the next downloads too
+      start(item.url, item.title, { enqueue, subs, hq });
+    }
     onClose();
   };
   const opt = (label: string, hint: string, v: boolean, set: (b: boolean) => void) => (
