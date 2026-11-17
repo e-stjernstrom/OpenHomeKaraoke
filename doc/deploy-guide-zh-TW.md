@@ -256,9 +256,11 @@ python app.py -w
 
 ### YouTube 要求「確認你不是機器人」
 
-有些網路（公司、學校、共用 Wi-Fi）會被 YouTube 要求登入才能下載。程式會用瀏覽器裡的 YouTube 登入資料（cookie）。
+有些網路（公司、學校、共用 Wi-Fi）會被 YouTube 要求登入才能下載。這時可以讓程式用瀏覽器裡的 YouTube 登入資料（cookie）。
 
-- 在瀏覽器登入 YouTube。Mac 上程式會自動用 **Chrome**（沒有 Chrome 才用 Firefox 或 Safari）。其他系統可以用 `-c chrome` 或 `-c firefox` 指定。
+**這是實驗功能，預設關閉。** 用帳號大量下載，YouTube 可能限制那個帳號，請用不重要的小號。
+
+- 在瀏覽器登入 YouTube，啟動時加 `-c chrome` 或 `-c firefox`（`-c auto` 依系統自動選：Mac 上是 Chrome，沒有 Chrome 才用 Firefox 或 Safari）。
 - 啟動時畫面會顯示一行 `YouTube sign-in: ...`，`signed in to YouTube: yes` 就表示可以用了。
 - **Mac**：要讓啟動卡拉 OK 的程式（例如「終端機」）有「完整磁碟取用權限」：系統設定 → 隱私權與安全性 → 完整磁碟取用權限，打開後把終端機完全結束再重開。第一次下載時 Mac 會問能不能使用「Chrome Safe Storage」，請按「永遠允許」。
 - 也可以改用 cookies.txt 檔案（`-c 檔案路徑.txt`）。請在**無痕視窗**登入 YouTube，在 YouTube 頁面匯出，匯出後馬上關掉無痕視窗；用一般視窗匯出的檔案，下載兩三首就會失效。這個檔案等於你的登入資料，不要給別人。

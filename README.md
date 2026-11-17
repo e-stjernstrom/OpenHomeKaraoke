@@ -162,8 +162,9 @@ optional arguments:
   --show-overlay        Show overlay on top of video with OpenHomeKaraoke QR code and IP
   -w, --windowed        Start OpenHomeKaraoke in windowed mode
   -c BROWSER_COOKIES, --browser-cookies BROWSER_COOKIES
-                        YouTube downloader can use browser cookies from the specified path (see the --cookies-from-browser option of yt-dlp), it can also be
-                        auto (default): automatically determine based on OS; none: do not use any browser cookies
+                        EXPERIMENTAL, off by default: sign in to YouTube with your browser's cookies (a browser name such as chrome or firefox, see the
+                        --cookies-from-browser option of yt-dlp, or a cookies.txt file; auto: pick by OS). YouTube may restrict an account that downloads
+                        a lot, so use a spare account. none (default): no cookies
   --cloud, -c CLOUD_URL cloud URL for DNN-based vocal splitter and speech recognition
   --admin-password ADMIN_PASSWORD
                         Administrator password, for locking down certain features of the web UI such as queue editing, player controls, song editing, and

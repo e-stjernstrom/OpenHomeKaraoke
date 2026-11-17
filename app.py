@@ -897,8 +897,8 @@ if __name__ == "__main__":
 	)
 	parser.add_argument(
 		'-c', "--browser-cookies",
-		default = "auto",
-		help = "YouTube downloader can use browser cookies from the specified path (see the --cookies-from-browser option of yt-dlp), it can also be auto (default): automatically determine based on OS; none: do not use any browser cookies",
+		default = "none",
+		help = "EXPERIMENTAL, off by default: sign in to YouTube with your browser's cookies (a browser name such as chrome or firefox, see the --cookies-from-browser option of yt-dlp, or a cookies.txt file; auto: pick by OS). YouTube may restrict an account that downloads a lot, so use a spare account. none (default): no cookies",
 	)
 	parser.add_argument(
 		"--admin-password",
@@ -949,6 +949,7 @@ if __name__ == "__main__":
 	if args.cookies_opt:
 		source = args.cookies_opt[1]
 		count, signed_in, error = browser_cookies.check(args.cookies_opt)
+		print("YouTube sign-in with browser cookies is EXPERIMENTAL: YouTube may restrict an account that downloads a lot, use a spare account.")
 		if error:
 			print(f"YouTube sign-in: cannot read cookies from {source} ({error}). Continuing without them; "
 			      f"YouTube may then ask to confirm you're not a bot. {browser_cookies.HINTS.get(platform, '')}")
